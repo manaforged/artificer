@@ -1,0 +1,39 @@
+name: Bug report
+description: A build fails, reuses a wrong result, or behaves differently from Cargo.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran, what you expected, and what you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: A minimal project or the smallest sequence of commands that shows the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: artificer doctor
+      description: Paste the output of `artificer doctor`.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: stat
+    attributes:
+      label: artificer stat --json
+      description: Paste the output of `artificer stat --json`. If a command went to real Cargo, also paste `artificer why-fallback`.
+      render: json
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `artificer --version`, `cargo --version`, and your operating system.
+    validations:
+      required: true

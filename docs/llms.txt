@@ -1,0 +1,10 @@
+# artificer-build
+
+> Public API reference that truesight generates from the compiler's rustdoc output, except the task names and calls, which come from the task file.
+
+## artificer-build 0.1.1
+
+- [Every public item, one per line](reference/artificer-build/api.txt): 205 lines
+- [API overview](reference/artificer-build/index.html): tasks, modules, features, and examples
+- [API changes by release](reference/artificer-build/changes.html)
+- [artificer](reference/artificer-build/artificer.html): 150 items

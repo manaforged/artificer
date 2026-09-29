@@ -1,0 +1,5 @@
+toolchain = "nightly-2026-09-16"
+book = "docs"
+
+[[crate]]
+package = "artificer-build"

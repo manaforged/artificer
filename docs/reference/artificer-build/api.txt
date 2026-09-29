@@ -1,0 +1,205 @@
+pub mod artificer
+#[repr(u8)] pub enum artificer::ColorChoice
+pub artificer::ColorChoice::Always
+pub artificer::ColorChoice::Auto
+pub artificer::ColorChoice::Never
+impl artificer::ColorChoice
+pub fn artificer::ColorChoice::parse(value: &str) -> core::option::Option<Self>
+impl core::clone::Clone for artificer::ColorChoice
+impl core::cmp::Eq for artificer::ColorChoice
+impl core::cmp::PartialEq for artificer::ColorChoice
+impl core::fmt::Debug for artificer::ColorChoice
+impl core::marker::Copy for artificer::ColorChoice
+impl core::marker::StructuralPartialEq for artificer::ColorChoice
+pub enum artificer::RustcOutcome
+pub artificer::RustcOutcome::Ran
+pub artificer::RustcOutcome::Restored
+impl core::clone::Clone for artificer::RustcOutcome
+impl core::cmp::Eq for artificer::RustcOutcome
+impl core::cmp::PartialEq for artificer::RustcOutcome
+impl core::fmt::Debug for artificer::RustcOutcome
+impl core::marker::Copy for artificer::RustcOutcome
+impl core::marker::StructuralPartialEq for artificer::RustcOutcome
+pub enum artificer::ScriptOutcome
+pub artificer::ScriptOutcome::None
+pub artificer::ScriptOutcome::Ran
+pub artificer::ScriptOutcome::Restored
+impl core::clone::Clone for artificer::ScriptOutcome
+impl core::cmp::Eq for artificer::ScriptOutcome
+impl core::cmp::PartialEq for artificer::ScriptOutcome
+impl core::fmt::Debug for artificer::ScriptOutcome
+impl core::marker::Copy for artificer::ScriptOutcome
+impl core::marker::StructuralPartialEq for artificer::ScriptOutcome
+pub struct artificer::CheckOpts
+pub artificer::CheckOpts::all_features: bool
+pub artificer::CheckOpts::features: alloc::vec::Vec<alloc::string::String>
+pub artificer::CheckOpts::json: bool
+pub artificer::CheckOpts::link: bool
+pub artificer::CheckOpts::meta_flags: alloc::vec::Vec<alloc::string::String>
+pub artificer::CheckOpts::no_default: bool
+pub artificer::CheckOpts::release: bool
+pub artificer::CheckOpts::targets: artificer::Targets
+pub artificer::CheckOpts::workspace: bool
+impl core::clone::Clone for artificer::CheckOpts
+impl core::default::Default for artificer::CheckOpts
+impl core::fmt::Debug for artificer::CheckOpts
+pub struct artificer::InstallReport
+pub artificer::InstallReport::binary: std::path::PathBuf
+pub artificer::InstallReport::env: std::path::PathBuf
+pub artificer::InstallReport::shim: std::path::PathBuf
+pub struct artificer::Mods
+pub artificer::Mods::cranelift: bool
+pub artificer::Mods::enabled: bool
+pub artificer::Mods::linker: bool
+pub artificer::Mods::meta_cache: bool
+pub artificer::Mods::rmeta: bool
+pub artificer::Mods::serve: bool
+pub artificer::Mods::slim: bool
+pub artificer::Mods::sweep: bool
+pub artificer::Mods::threads: bool
+impl artificer::Mods
+pub fn artificer::Mods::get(&self, name: &str) -> anyhow::Result<bool>
+pub fn artificer::Mods::names() -> &'static [&'static str]
+pub fn artificer::Mods::set(&mut self, name: &str, on: bool) -> anyhow::Result<()>
+pub fn artificer::Mods::table(&self) -> alloc::collections::btree::map::BTreeMap<&'static str, bool>
+impl core::clone::Clone for artificer::Mods
+impl core::default::Default for artificer::Mods
+impl core::fmt::Debug for artificer::Mods
+impl serde_core::ser::Serialize for artificer::Mods
+impl<'de> serde_core::de::Deserialize<'de> for artificer::Mods where artificer::Mods: core::default::Default
+pub struct artificer::Report
+pub artificer::Report::rlib: std::path::PathBuf
+pub artificer::Report::rustc: artificer::RustcOutcome
+pub artificer::Report::script: artificer::ScriptOutcome
+impl core::fmt::Debug for artificer::Report
+pub struct artificer::Reported
+impl core::error::Error for artificer::Reported
+impl core::fmt::Debug for artificer::Reported
+impl core::fmt::Display for artificer::Reported
+pub struct artificer::ServeRequest
+pub artificer::ServeRequest::all_features: bool
+pub artificer::ServeRequest::all_targets: bool
+pub artificer::ServeRequest::args: alloc::vec::Vec<alloc::string::String>
+pub artificer::ServeRequest::dir: std::path::PathBuf
+pub artificer::ServeRequest::doc: bool
+pub artificer::ServeRequest::features: alloc::vec::Vec<alloc::string::String>
+pub artificer::ServeRequest::json: bool
+pub artificer::ServeRequest::lib: bool
+pub artificer::ServeRequest::link: bool
+pub artificer::ServeRequest::meta_flags: alloc::vec::Vec<alloc::string::String>
+pub artificer::ServeRequest::no_default: bool
+pub artificer::ServeRequest::no_run: bool
+pub artificer::ServeRequest::only: alloc::vec::Vec<alloc::string::String>
+pub artificer::ServeRequest::op: alloc::string::String
+pub artificer::ServeRequest::packages: alloc::vec::Vec<alloc::string::String>
+pub artificer::ServeRequest::release: bool
+pub artificer::ServeRequest::tests: bool
+pub artificer::ServeRequest::token: alloc::string::String
+pub artificer::ServeRequest::workspace: bool
+impl core::clone::Clone for artificer::ServeRequest
+impl core::fmt::Debug for artificer::ServeRequest
+impl serde_core::ser::Serialize for artificer::ServeRequest
+impl<'de> serde_core::de::Deserialize<'de> for artificer::ServeRequest
+pub struct artificer::StoreStat
+pub artificer::StoreStat::builds: u64
+pub artificer::StoreStat::bytes: u64
+pub artificer::StoreStat::fallback_last: core::option::Option<alloc::string::String>
+pub artificer::StoreStat::fallbacks: u64
+pub artificer::StoreStat::hits: u64
+pub artificer::StoreStat::last_build: core::option::Option<alloc::string::String>
+pub artificer::StoreStat::meta: u32
+pub artificer::StoreStat::meta_bytes: u64
+pub artificer::StoreStat::misses: u64
+pub artificer::StoreStat::scratch: u32
+pub artificer::StoreStat::scratch_bytes: u64
+pub artificer::StoreStat::units: u32
+impl core::default::Default for artificer::StoreStat
+impl core::fmt::Debug for artificer::StoreStat
+pub struct artificer::SweepReport
+pub artificer::SweepReport::evicted_bytes: u64
+pub artificer::SweepReport::evicted_units: u32
+pub artificer::SweepReport::incremental_dirs: u32
+pub artificer::SweepReport::scratch_dirs: u32
+impl core::clone::Clone for artificer::SweepReport
+impl core::cmp::Eq for artificer::SweepReport
+impl core::cmp::PartialEq for artificer::SweepReport
+impl core::default::Default for artificer::SweepReport
+impl core::fmt::Debug for artificer::SweepReport
+impl core::marker::Copy for artificer::SweepReport
+impl core::marker::StructuralPartialEq for artificer::SweepReport
+pub struct artificer::Targets
+pub artificer::Targets::all: bool
+pub artificer::Targets::tests: bool
+impl core::clone::Clone for artificer::Targets
+impl core::default::Default for artificer::Targets
+impl core::fmt::Debug for artificer::Targets
+impl core::marker::Copy for artificer::Targets
+pub struct artificer::TestOpts
+pub artificer::TestOpts::all_features: bool
+pub artificer::TestOpts::args: alloc::vec::Vec<alloc::string::String>
+pub artificer::TestOpts::doc: bool
+pub artificer::TestOpts::features: alloc::vec::Vec<alloc::string::String>
+pub artificer::TestOpts::json: bool
+pub artificer::TestOpts::lib: bool
+pub artificer::TestOpts::meta_flags: alloc::vec::Vec<alloc::string::String>
+pub artificer::TestOpts::no_default: bool
+pub artificer::TestOpts::no_run: bool
+pub artificer::TestOpts::only: alloc::vec::Vec<alloc::string::String>
+pub artificer::TestOpts::release: bool
+pub artificer::TestOpts::workspace: bool
+impl core::default::Default for artificer::TestOpts
+impl core::fmt::Debug for artificer::TestOpts
+pub struct artificer::TransferReport
+pub artificer::TransferReport::bytes: u64
+pub artificer::TransferReport::units: u64
+pub struct artificer::Unmodeled(pub alloc::string::String)
+impl core::error::Error for artificer::Unmodeled
+impl core::fmt::Debug for artificer::Unmodeled
+impl core::fmt::Display for artificer::Unmodeled
+pub const artificer::LAYOUT: &str
+pub fn artificer::add_to_profiles(files: &[std::path::PathBuf], line: &str, control: &std::path::Path) -> anyhow::Result<alloc::vec::Vec<std::path::PathBuf>>
+pub fn artificer::cargo_home() -> std::path::PathBuf
+pub fn artificer::cargo_package(cargo_home: &std::path::Path) -> core::option::Option<alloc::string::String>
+pub fn artificer::check(pkg: &std::path::Path, home: &std::path::Path) -> anyhow::Result<artificer::Report>
+pub fn artificer::check_cmd(dir: &std::path::Path, packages: &[alloc::string::String], home: &std::path::Path, opts: artificer::CheckOpts) -> anyhow::Result<i32>
+pub fn artificer::check_package(dir: &std::path::Path, packages: &[alloc::string::String], home: &std::path::Path) -> anyhow::Result<artificer::Report>
+pub fn artificer::check_real_cargo(real_cargo: &std::path::Path, control: &std::path::Path) -> anyhow::Result<()>
+pub fn artificer::control_home() -> std::path::PathBuf
+pub fn artificer::default_home() -> std::path::PathBuf
+pub fn artificer::doctor(home: &std::path::Path) -> anyhow::Result<i32>
+pub fn artificer::enabled(home: &std::path::Path) -> anyhow::Result<bool>
+pub fn artificer::env_script() -> alloc::string::String
+pub fn artificer::export(home: &std::path::Path, dest: &std::path::Path, days: u64, max_bytes: u64) -> anyhow::Result<artificer::TransferReport>
+pub fn artificer::fallback_report(home: &std::path::Path, limit: usize) -> alloc::string::String
+pub fn artificer::import(home: &std::path::Path, src: &std::path::Path) -> anyhow::Result<artificer::TransferReport>
+pub fn artificer::install(binary: &std::path::Path, real_cargo: &std::path::Path, cargo_home: &std::path::Path, control: &std::path::Path) -> anyhow::Result<artificer::InstallReport>
+pub fn artificer::installed_profiles(home: &std::path::Path, zdotdir: core::option::Option<&std::path::Path>) -> alloc::vec::Vec<std::path::PathBuf>
+pub fn artificer::isolate(cmd: &mut std::process::Command)
+pub fn artificer::load_mods(home: &std::path::Path) -> anyhow::Result<artificer::Mods>
+pub fn artificer::note_fallback(home: &std::path::Path, reason: &str)
+pub fn artificer::passthrough_reason(req: &artificer::ServeRequest, dev: bool, home: &std::path::Path) -> anyhow::Result<core::option::Option<alloc::string::String>>
+pub fn artificer::path_prepend(path: &str, dir: &str) -> core::option::Option<alloc::string::String>
+pub fn artificer::path_remove(path: &str, dir: &str) -> core::option::Option<alloc::string::String>
+pub fn artificer::profile_line(home: &std::path::Path, control: &std::path::Path) -> alloc::string::String
+pub fn artificer::profiles(home: &std::path::Path, shell: core::option::Option<&std::path::Path>, zdotdir: core::option::Option<&std::path::Path>) -> alloc::vec::Vec<std::path::PathBuf>
+pub fn artificer::purge(home: &std::path::Path) -> core::io::error::Result<bool>
+pub fn artificer::ready(home: &std::path::Path) -> bool
+pub fn artificer::remove_from_profiles(files: &[std::path::PathBuf], line: &str, control: &std::path::Path) -> anyhow::Result<alloc::vec::Vec<std::path::PathBuf>>
+pub fn artificer::report_error(message: impl core::fmt::Display)
+pub fn artificer::run_cmd(dir: &std::path::Path, packages: &[alloc::string::String], bin: core::option::Option<&str>, example: core::option::Option<&str>, home: &std::path::Path, opts: artificer::CheckOpts, args: &[alloc::string::String]) -> anyhow::Result<i32>
+pub fn artificer::save_mods(home: &std::path::Path, mods: &artificer::Mods) -> anyhow::Result<()>
+pub fn artificer::serve_listen(home: &std::path::Path) -> anyhow::Result<()>
+pub fn artificer::serve_ping(home: &std::path::Path) -> bool
+pub fn artificer::serve_stop(home: &std::path::Path) -> anyhow::Result<()>
+pub fn artificer::serve_try(home: &std::path::Path, req: &mut artificer::ServeRequest) -> core::option::Option<anyhow::Result<i32>>
+pub fn artificer::set_color(choice: artificer::ColorChoice)
+pub fn artificer::set_jobs(jobs: usize)
+pub fn artificer::set_quiet(on: bool)
+pub fn artificer::set_trace(on: bool)
+pub fn artificer::stock_cargo() -> std::path::PathBuf
+pub fn artificer::store_stat(home: &std::path::Path) -> anyhow::Result<artificer::StoreStat>
+pub fn artificer::sweep_dir(dir: &std::path::Path, home: &std::path::Path) -> anyhow::Result<artificer::SweepReport>
+pub fn artificer::test_package(dir: &std::path::Path, packages: &[alloc::string::String], home: &std::path::Path, opts: &artificer::TestOpts) -> anyhow::Result<i32>
+pub fn artificer::toolchain_path() -> core::option::Option<std::ffi::os_str::OsString>
+pub fn artificer::uninstall(cargo_home: &std::path::Path, control: &std::path::Path) -> anyhow::Result<alloc::vec::Vec<std::path::PathBuf>>
+pub fn artificer::why_miss(home: &std::path::Path, crate_name: &str) -> core::option::Option<alloc::string::String>

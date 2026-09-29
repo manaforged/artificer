@@ -1,0 +1,60 @@
+[package]
+name = "artificer-build"
+version = "0.1.1"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+authors = ["Thomas Gardiner <thomas@manaforge.tech>"]
+description = "A compile cache for Rust that every checkout on a machine shares, used through a cargo shim"
+repository = "https://github.com/manaforged/artificer"
+homepage = "https://github.com/manaforged/artificer"
+documentation = "https://github.com/manaforged/artificer/tree/main/docs/guide"
+readme = "README.md"
+exclude = ["/.github", "/bench", "/scripts/bench*.py"]
+keywords = ["build-cache", "cargo", "rust", "rustc"]
+categories = ["development-tools::build-utils"]
+
+[lib]
+name = "artificer"
+
+[[bin]]
+name = "artificer"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+blake3 = "1"
+getrandom = "0.4"
+memchr = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = { version = "0.8", default-features = false, features = ["parse"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.clippy]
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+disallowed_methods = "deny"
+disallowed_types = "deny"
+disallowed_macros = "deny"
+rc_mutex = "deny"
+unused_result_ok = "deny"
+allow_attributes_without_reason = "deny"
+let_underscore_future = "deny"
+let_underscore_lock = "deny"
+let_underscore_must_use = "deny"
+map_err_ignore = "deny"
+assertions_on_result_states = "deny"
+unwrap_in_result = "deny"
+get_unwrap = "deny"
+ignore_without_reason = "deny"
+should_panic_without_expect = "deny"

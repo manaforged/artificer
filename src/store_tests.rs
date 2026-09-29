@@ -1,0 +1,219 @@
+use super::*;
+use anyhow::{Result, anyhow};
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+#[test]
+fn hold_serializes() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let home = tmp.path().to_path_buf();
+    let order = Arc::new(Mutex::new(Vec::new()));
+    let (acquired_tx, acquired_rx) = std::sync::mpsc::channel();
+    let a_home = home.clone();
+    let a_ord = order.clone();
+    let a = thread::spawn(move || -> Result<()> {
+        let _guard = hold(&a_home, "d")?;
+        acquired_tx
+            .send(())
+            .map_err(|_stopped| anyhow!("the test stopped waiting"))?;
+        a_ord
+            .lock()
+            .map_err(|_poison| anyhow!("order mutex poisoned"))?
+            .push(1);
+        thread::sleep(Duration::from_millis(80));
+        a_ord
+            .lock()
+            .map_err(|_poison| anyhow!("order mutex poisoned"))?
+            .push(2);
+        Ok(())
+    });
+    acquired_rx
+        .recv()
+        .map_err(|_dead| anyhow!("first holder died before acquiring"))?;
+    let b_ord = order.clone();
+    let b = thread::spawn(move || -> Result<()> {
+        let _guard = hold(&home, "d")?;
+        b_ord
+            .lock()
+            .map_err(|_poison| anyhow!("order mutex poisoned"))?
+            .push(3);
+        Ok(())
+    });
+    a.join()
+        .map_err(|_thread| anyhow!("first holder thread panicked"))??;
+    b.join()
+        .map_err(|_thread| anyhow!("second holder thread panicked"))??;
+    assert_eq!(
+        *order
+            .lock()
+            .map_err(|_poison| anyhow!("order mutex poisoned"))?,
+        vec![1, 2, 3]
+    );
+    Ok(())
+}
+
+fn unit(home: &Path, name: &str) -> Result<PathBuf> {
+    let dir = home.join("units").join(LAYOUT).join(name);
+    fs::create_dir_all(dir.join("out"))?;
+    fs::write(dir.join("ok"), "")?;
+    fs::write(dir.join("out/libx.rlib"), b"x")?;
+    Ok(dir)
+}
+
+#[test]
+fn parallel_publish_never_collides() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let home = tmp.path().to_path_buf();
+    let mut joins = Vec::new();
+    for thread_id in 0..8 {
+        let home = home.clone();
+        joins.push(thread::spawn(move || -> Result<()> {
+            for unit_id in 0..50 {
+                let name = format!("u-{thread_id}-{unit_id}");
+                let slot = Slot::new(&home, &name);
+                let src = home.join("stage").join(&name);
+                fs::create_dir_all(src.join("out"))?;
+                fs::write(src.join("out/libx.rlib"), b"x")?;
+                slot.copy_from(&src)?;
+                assert!(slot.hit());
+            }
+            Ok(())
+        }));
+    }
+    for join in joins {
+        join.join()
+            .map_err(|_thread| anyhow!("publisher thread panicked"))??;
+    }
+    Ok(())
+}
+
+#[test]
+fn gc_evicts_old_unit() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let dir = unit(tmp.path(), "u-dead")?;
+    let (gone, bytes) = gc_units(tmp.path(), Duration::ZERO)?;
+    assert_eq!(gone, 1);
+    assert!(bytes >= 1);
+    assert!(!dir.exists());
+    Ok(())
+}
+
+#[test]
+fn gc_skips_held_unit() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let dir = unit(tmp.path(), "u-held")?;
+    let guard = hold(tmp.path(), "u-held")?;
+    let (gone, _) = gc_units(tmp.path(), Duration::ZERO)?;
+    assert_eq!(gone, 0);
+    assert!(dir.exists());
+    drop(guard);
+    let released = std::time::Instant::now();
+    while try_hold(tmp.path(), "u-held")?.is_none() {
+        assert!(released.elapsed() < Duration::from_secs(5));
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let (gone, _) = gc_units(tmp.path(), Duration::ZERO)?;
+    assert_eq!(gone, 1);
+    assert!(!dir.exists());
+    Ok(())
+}
+
+#[test]
+fn gc_keeps_fresh_unit() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let dir = unit(tmp.path(), "u-fresh")?;
+    let (gone, _) = gc_units(tmp.path(), AGE)?;
+    assert_eq!(gone, 0);
+    assert!(dir.join("ok").is_file());
+    Ok(())
+}
+
+#[test]
+fn gc_cap_evicts_oldest_first() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let old = unit(tmp.path(), "u-old")?;
+    let new = unit(tmp.path(), "u-new")?;
+    let past = std::time::SystemTime::now() - std::time::Duration::from_secs(24 * 3600);
+    fs::File::options()
+        .write(true)
+        .open(old.join("ok"))?
+        .set_modified(past)?;
+    let one = size(&new)?;
+    let (gone, _) = gc_cap(tmp.path(), one)?;
+    assert_eq!(gone, 1);
+    assert!(!old.exists(), "oldest unit evicted first");
+    assert!(new.join("ok").is_file(), "hot unit survives the cap");
+    Ok(())
+}
+
+#[test]
+fn gc_evicts_old_meta() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let cache = tmp.path().join("cargo-meta/cache");
+    fs::create_dir_all(&cache)?;
+    fs::write(cache.join("k.json"), b"{}")?;
+    fs::write(tmp.path().join("rustc-runs"), "ran\n")?;
+    let (gone, bytes) = gc_units(tmp.path(), Duration::ZERO)?;
+    assert_eq!(gone, 0, "no units, only cache");
+    assert!(bytes >= 3);
+    assert!(!cache.join("k.json").exists());
+    assert!(!tmp.path().join("rustc-runs").exists());
+    fs::write(cache.join("k.json"), b"{}")?;
+    fs::write(tmp.path().join("rustc-runs"), "ran\n")?;
+    gc_units(tmp.path(), AGE)?;
+    assert!(cache.join("k.json").is_file(), "fresh cache stays");
+    assert!(tmp.path().join("rustc-runs").is_file(), "fresh log stays");
+    Ok(())
+}
+
+#[test]
+fn stats_sum_over_builds() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let home = tmp.path().join("home");
+    std::fs::create_dir_all(&home)?;
+    assert_eq!(stats(&home)?, (0, 0));
+    bump_stats(&home, 3, 1)?;
+    bump_stats(&home, 2, 4)?;
+    assert_eq!(stats(&home)?, (5, 5));
+    Ok(())
+}
+
+#[test]
+fn fallback_notes_sum() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let home = tmp.path().join("home");
+    std::fs::create_dir_all(&home)?;
+    assert_eq!(fallbacks(&home), (0, None));
+    note_fallback(&home, "--target is set");
+    note_fallback(&home, "profile `custom` belongs to cargo");
+    assert_eq!(
+        fallbacks(&home),
+        (2, Some("profile `custom` belongs to cargo".to_string()))
+    );
+    Ok(())
+}
+
+#[test]
+fn build_records_count_and_explain() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let home = tmp.path().join("home");
+    assert!(crate::ready(&home));
+    note_build(&home, "check", 3, 1, 120, None);
+    note_build(&home, "build", 0, 5, 400, None);
+    note_fallback(&home, "--target is set");
+    note_fallback(&home, "--target is set");
+    note_fallback(&home, "profile `custom` belongs to cargo");
+
+    let records = build_records(&home);
+    assert_eq!(records.len(), 5);
+    assert_eq!(records[0]["hits"], 3);
+    assert_eq!(records[1]["op"], "build");
+    assert_eq!(
+        fallback_reasons(&home),
+        vec![
+            ("--target is set".to_string(), 2),
+            ("profile `custom` belongs to cargo".to_string(), 1),
+        ]
+    );
+    Ok(())
+}

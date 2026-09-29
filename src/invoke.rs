@@ -1,0 +1,250 @@
+use crate::cargo::{self, Package};
+use crate::platform::env_path;
+use crate::script::{self, Script};
+use crate::session::Session;
+use crate::settings::{Settings, profile_for};
+use anyhow::{Context, Result, bail};
+use serde_json::{Map, Value};
+use std::fs::File;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+pub(crate) fn style(
+    settings: &Settings,
+    cmd: &mut Command,
+    link: bool,
+    pkg: &Package,
+    lto_ok: bool,
+) {
+    if std::env::var_os("ARTIFICER_PASSES").is_some() {
+        cmd.arg("-Ztime-passes");
+    }
+    cmd.env_remove("RUSTFLAGS");
+    cmd.env_remove("CARGO_ENCODED_RUSTFLAGS");
+    if settings.mods.slim {
+        cmd.arg("-C").arg("debuginfo=line-tables-only");
+    }
+    if !settings.lto {
+        cmd.arg("-C").arg("embed-bitcode=no");
+    }
+    for a in profile_for(&settings.profile, lto_ok) {
+        cmd.arg(a);
+    }
+    for a in settings
+        .overrides
+        .for_package(&pkg.name, pkg.source.is_some())
+    {
+        cmd.arg(a);
+    }
+    for a in settings.lints(pkg).iter() {
+        cmd.arg(a);
+    }
+    for a in &settings.threads {
+        cmd.arg(a);
+    }
+    if settings.mods.slim {
+        cmd.arg("-C").arg("split-debuginfo=off");
+    }
+    for a in check_cfg_args(pkg) {
+        cmd.arg("--check-cfg").arg(a);
+    }
+    for a in &settings.rustflags {
+        cmd.arg(a);
+    }
+    if link {
+        for a in &settings.linker {
+            cmd.arg(a);
+        }
+    }
+}
+
+pub(crate) fn check_cfg_args(pkg: &Package) -> Vec<String> {
+    let mut args = vec!["cfg(docsrs,test)".to_string()];
+    let names: Vec<String> = pkg.declared.keys().map(|f| format!("\"{f}\"")).collect();
+    args.push(if names.is_empty() {
+        "cfg(feature, values())".to_string()
+    } else {
+        format!("cfg(feature, values({}))", names.join(", "))
+    });
+    args
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the rustc command must receive every independent Cargo unit input"
+)]
+pub(crate) fn rustc_base(
+    mut cmd: Command,
+    sess: &Session,
+    pkg: &Package,
+    target: &cargo::Target,
+    link: bool,
+    features: &[String],
+    out: &Path,
+    script: Option<&Script>,
+    lto_ok: bool,
+) -> Command {
+    let crate_name = target.name.replace('-', "_");
+    cmd.args(["--crate-name", &crate_name, "--edition", &target.edition]);
+    style(&sess.settings, &mut cmd, link, pkg, lto_ok);
+    for a in &sess.settings.codegen {
+        cmd.arg(a);
+    }
+    cmd.arg("--remap-path-prefix")
+        .arg(format!("{}=.", pkg.root().display()));
+    cmd.arg("--out-dir").arg(out);
+    if pkg.source.is_some() {
+        cmd.arg("--cap-lints").arg("allow");
+    }
+    for feat in features {
+        cmd.arg("--cfg").arg(format!("feature=\"{feat}\""));
+    }
+    cmd.env("CARGO_CRATE_NAME", crate_name);
+    cargo::set_package_env(&mut cmd, pkg);
+    if let Some(s) = script {
+        apply_script(&mut cmd, s);
+    }
+    cmd
+}
+
+pub(crate) fn apply_script(cmd: &mut Command, s: &Script) {
+    cmd.env("OUT_DIR", env_path(&s.out_dir));
+    for cfg in script::rustc_cfgs(&s.output) {
+        cmd.arg("--cfg").arg(cfg);
+    }
+    for (k, v) in script::rustc_envs(&s.output) {
+        cmd.env(k, v);
+    }
+    for lib in script::link_libs(&s.output) {
+        cmd.arg("-l").arg(lib);
+    }
+    for search in script::link_search(&s.output) {
+        cmd.arg("-L").arg(search);
+    }
+    for arg in script::link_args(&s.output) {
+        cmd.arg("-C").arg(format!("link-arg={arg}"));
+    }
+    for cfg in script::check_cfgs(&s.output) {
+        cmd.arg("--check-cfg").arg(cfg);
+    }
+    let mut flags = script::rustc_flags(&s.output).into_iter();
+    while let (Some(flag), Some(value)) = (flags.next(), flags.next()) {
+        cmd.arg(flag).arg(value);
+    }
+}
+
+pub(crate) fn add_natives(cmd: &mut Command, sess: &Session) {
+    let natives = sess.natives.lock().expect("natives");
+    let mut seen = std::collections::HashSet::new();
+    for out in natives.values() {
+        for search in script::link_search(out) {
+            if seen.insert(format!("L{search}")) {
+                cmd.arg("-L").arg(search);
+            }
+        }
+        for lib in script::link_libs(out) {
+            if seen.insert(format!("l{lib}")) {
+                cmd.arg("-l").arg(lib);
+            }
+        }
+        for arg in script::link_args(out) {
+            if seen.insert(format!("a{arg}")) {
+                cmd.arg("-C").arg(format!("link-arg={arg}"));
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum ExternSet {
+    Lib,
+    Test,
+}
+
+pub(crate) fn add_externs(
+    cmd: &mut Command,
+    sess: &Session,
+    node: &cargo::Node,
+    set: ExternSet,
+    prefer_meta: bool,
+) -> Result<()> {
+    let arts = sess
+        .artifacts
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut dirs: Vec<&Path> = arts.values().filter_map(|a| a.path.parent()).collect();
+    dirs.sort_unstable();
+    dirs.dedup();
+    for dir in dirs {
+        cmd.arg("-L").arg(format!("dependency={}", dir.display()));
+    }
+    for d in &node.deps {
+        let ok = match set {
+            ExternSet::Lib => d.usable_for_lib(),
+            ExternSet::Test => d.usable_for_lib() || d.usable_for_dev(),
+        };
+        if !ok {
+            continue;
+        }
+        let Some(art) = arts.get(&d.pkg) else {
+            bail!("missing artifact for {}", d.pkg);
+        };
+        let path = match (prefer_meta, &art.rmeta) {
+            (true, Some(rmeta)) => rmeta,
+            _ => &art.path,
+        };
+        cmd.arg("--extern")
+            .arg(format!("{}={}", d.name, path.display()));
+    }
+    Ok(())
+}
+
+pub(crate) fn search_dirs(sess: &Session) -> Vec<PathBuf> {
+    let arts = sess
+        .artifacts
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut dirs: Vec<_> = arts
+        .values()
+        .filter_map(|art| art.path.parent().map(Path::to_path_buf))
+        .collect();
+    dirs.sort();
+    dirs.dedup();
+    dirs
+}
+
+pub(crate) fn script_externs(sess: &Session, node: &cargo::Node) -> Result<Vec<(String, PathBuf)>> {
+    let arts = sess
+        .artifacts
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut v = Vec::new();
+    for d in &node.deps {
+        if !d.usable_for_script() {
+            continue;
+        }
+        let Some(art) = arts.get(&d.pkg) else {
+            bail!("missing build-dep artifact for {}", d.pkg);
+        };
+        v.push((d.name.clone(), art.path.clone()));
+    }
+    Ok(v)
+}
+
+pub(crate) fn uses_target_tmpdir(target: &cargo::Target) -> bool {
+    target
+        .kind
+        .iter()
+        .any(|kind| matches!(kind.as_str(), "test" | "bench"))
+}
+
+pub(crate) fn set_target_tmpdir(cmd: &mut Command, sess: &Session, enabled: bool) {
+    if let (true, Some(path)) = (enabled, &sess.target_tmpdir) {
+        cmd.env("CARGO_TARGET_TMPDIR", env_path(path));
+    } else {
+        cmd.env_remove("CARGO_TARGET_TMPDIR");
+    }
+}
+
+mod diagnostics;
+pub(crate) use diagnostics::{note_rustc, primary_env, replay, run_rustc};

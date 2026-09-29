@@ -1,0 +1,158 @@
+use std::path::Path;
+use std::process::Command;
+
+pub fn codegen(home: &Path, rustc: &str, dir: &Path) -> Vec<String> {
+    match std::env::var("ARTIFICER_CODEGEN") {
+        Ok(s) if s == "llvm" || s == "off" => return Vec::new(),
+        _ => {}
+    }
+    stamped(home, "codegen", rustc, || probe_cranelift(dir))
+}
+
+pub fn linker(home: &Path, rustc: &str, dir: &Path) -> Vec<String> {
+    match std::env::var("ARTIFICER_LINKER") {
+        Ok(s) if s == "off" || s == "default" => return Vec::new(),
+        Ok(s) if !s.is_empty() => return vec!["-C".into(), format!("linker={s}")],
+        _ => {}
+    }
+    stamped(home, "linker", rustc, || probe_linker(dir))
+}
+
+pub fn threads(home: &Path, rustc: &str, dir: &Path) -> Vec<String> {
+    match std::env::var("ARTIFICER_THREADS") {
+        Ok(s) if s == "off" => return Vec::new(),
+        _ => {}
+    }
+    stamped(home, "threads", rustc, || probe_threads(dir))
+}
+
+fn stamp_id(kind: &str, rustc: &str) -> String {
+    let mut h = blake3::Hasher::new();
+    h.update(kind.as_bytes());
+    h.update(rustc.as_bytes());
+    format!("{kind}-{}", &h.finalize().to_hex()[..16])
+}
+
+fn stamped(
+    home: &Path,
+    kind: &str,
+    rustc: &str,
+    probe: impl FnOnce() -> Vec<String>,
+) -> Vec<String> {
+    let stamp = home.join(stamp_id(kind, rustc));
+    if let Ok(s) = std::fs::read_to_string(&stamp) {
+        let s = s.trim();
+        if s == "off" || s == "llvm" || s.is_empty() {
+            return Vec::new();
+        }
+        return s.split_whitespace().map(str::to_string).collect();
+    }
+    let args = probe();
+    let line = if args.is_empty() {
+        "off".into()
+    } else {
+        args.join(" ")
+    };
+    drop(std::fs::create_dir_all(home));
+    drop(std::fs::write(&stamp, &line));
+    args
+}
+
+fn probe_cranelift(dir: &Path) -> Vec<String> {
+    let candidates = [
+        vec!["-C".into(), "codegen-backend=cranelift".into()],
+        vec!["-Z".into(), "codegen-backend=cranelift".into()],
+    ];
+    for args in candidates {
+        if rustc_lib(&args, dir) {
+            return args;
+        }
+    }
+    Vec::new()
+}
+
+fn probe_linker(dir: &Path) -> Vec<String> {
+    let candidates = [
+        vec!["-C".into(), "linker=mold".into()],
+        vec!["-C".into(), "linker=wild".into()],
+        vec!["-C".into(), "linker=ld64.mold".into()],
+        vec!["-C".into(), "link-arg=-fuse-ld=lld".into()],
+        vec!["-C".into(), "linker=rust-lld".into()],
+    ];
+    for args in candidates {
+        if rustc_bin(&args, dir) {
+            return args;
+        }
+    }
+    Vec::new()
+}
+
+fn probe_threads(dir: &Path) -> Vec<String> {
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let args = vec!["-Z".into(), format!("threads={}", threads_n(cores))];
+    if rustc_lib(&args, dir) {
+        return args;
+    }
+    Vec::new()
+}
+
+fn threads_n(cores: usize) -> usize {
+    (cores / 4).clamp(1, 4)
+}
+
+fn rustc_lib(extra: &[String], toolchain_dir: &Path) -> bool {
+    let dir = scratch("lib");
+    let src = dir.join("lib.rs");
+    if std::fs::write(&src, "pub fn _n() {}\n").is_err() {
+        return false;
+    }
+    let mut cmd = Command::new(crate::key::rustc_bin());
+    cmd.current_dir(toolchain_dir);
+    crate::jobs::isolate(&mut cmd);
+    cmd.args(extra);
+    cmd.args(["--crate-type", "lib", "--edition", "2021", "--out-dir"]);
+    cmd.arg(&dir);
+    cmd.arg(&src);
+    cmd.stdout(std::process::Stdio::null());
+    cmd.stderr(std::process::Stdio::null());
+    let ok = cmd.status().map(|s| s.success()).unwrap_or(false);
+    drop(std::fs::remove_dir_all(&dir));
+    ok
+}
+
+fn rustc_bin(extra: &[String], toolchain_dir: &Path) -> bool {
+    let dir = scratch("bin");
+    let src = dir.join("main.rs");
+    if std::fs::write(&src, "fn main() {}\n").is_err() {
+        return false;
+    }
+    let mut cmd = Command::new(crate::key::rustc_bin());
+    cmd.current_dir(toolchain_dir);
+    crate::jobs::isolate(&mut cmd);
+    cmd.args(extra);
+    cmd.args([
+        "--crate-type",
+        "bin",
+        "--edition",
+        "2021",
+        "--emit=link",
+        "--out-dir",
+    ]);
+    cmd.arg(&dir);
+    cmd.arg(&src);
+    cmd.stdout(std::process::Stdio::null());
+    cmd.stderr(std::process::Stdio::null());
+    let ok = cmd.status().map(|s| s.success()).unwrap_or(false);
+    drop(std::fs::remove_dir_all(&dir));
+    ok
+}
+
+fn scratch(tag: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("artificer-{tag}-{}", std::process::id()))
+}
+
+#[cfg(test)]
+#[path = "flags_tests.rs"]
+mod tests;
