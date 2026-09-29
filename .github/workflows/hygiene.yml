@@ -2,6 +2,8 @@ name: hygiene
 
 on:
   push:
+    branches-ignore: ['dependabot/**']
+    tags: ['**']
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
   workflow_dispatch:
@@ -11,6 +13,10 @@ permissions:
 
 jobs:
   hygiene:
+    if: >-
+      github.repository == 'manaforged/artificer' &&
+      (github.event_name != 'pull_request_target' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
