@@ -1,5 +1,12 @@
 # Contributing to Artificer
 
+Artificer does not accept external pull requests until its API is more
+stable. Only accounts with write access can open a pull request. To report a
+bug or request a feature, open an
+[issue](https://github.com/manaforged/artificer/issues). To report a
+vulnerability, follow [SECURITY.md](SECURITY.md). The rest of this guide is
+the maintainers' workflow.
+
 Artificer compiles Rust packages outside Cargo's ordinary build directory. A
 change can appear correct while producing a different artifact or command
 result. Keep each change narrow and add a comparison with Cargo when behavior

@@ -139,9 +139,11 @@ If Cargo installed Artificer, `artificer uninstall` also runs
 
 ## Contributing
 
-Report bugs in [GitHub issues](https://github.com/manaforged/artificer/issues).
-See [CONTRIBUTING.md](CONTRIBUTING.md) to send a change and
-[SECURITY.md](SECURITY.md) to report a vulnerability.
+Artificer does not accept external pull requests until its API is more
+stable. Report bugs and request features in
+[GitHub issues](https://github.com/manaforged/artificer/issues).
+[CONTRIBUTING.md](CONTRIBUTING.md) describes the maintainers' workflow, and
+[SECURITY.md](SECURITY.md) explains how to report a vulnerability.
 
 ## API
 
