@@ -2,18 +2,9 @@ name: CI
 
 on:
   pull_request:
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
+  merge_group:
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
   workflow_dispatch:
 
 concurrency:
@@ -78,3 +69,13 @@ jobs:
           persist-credentials: false
       - name: Check advisories, licenses, bans, and sources
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+
+  required:
+    name: required
+    needs: [test, lint, dependencies]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every check passed or was not needed
+        run: test "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = false
