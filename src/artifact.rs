@@ -73,7 +73,7 @@ pub fn deliver(
     }
     std::fs::create_dir_all(target)?;
     for (src, dst) in pending {
-        crate::platform::replace_atomic(&dst, |tmp| std::fs::copy(&src, tmp).map(drop))
+        crate::platform::replace_atomic(&dst, |tmp| crate::platform::copy_file(&src, tmp))
             .with_context(|| format!("copy {} -> {}", src.display(), dst.display()))?;
     }
     Ok(())
@@ -92,7 +92,7 @@ pub(crate) fn place_exe(src: &Path, dir: &Path, file: &str) -> Result<PathBuf> {
     std::fs::create_dir_all(dir)?;
     let dst = dir.join(file);
     crate::platform::replace_atomic(&dst, |tmp| {
-        std::fs::hard_link(src, tmp).or_else(|_| std::fs::copy(src, tmp).map(drop))
+        std::fs::hard_link(src, tmp).or_else(|_| crate::platform::copy_file(src, tmp))
     })
     .with_context(|| format!("copy {} -> {}", src.display(), dst.display()))?;
     Ok(dst)
