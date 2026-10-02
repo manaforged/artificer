@@ -114,7 +114,7 @@ Import and export publish complete copies through a staging directory and rename
 
 The store refreshes the ok marker on use. Daily garbage collection removes
 units older than 30 days. An hourly pass evicts least-recently-used units when
-the store exceeds its byte limit. Units with active readers or writers are skipped. Other store-layout versions are preserved.
+the store exceeds its byte limit. Units with active readers or writers are skipped. Units of other store-layout versions stay while any version uses them; daily garbage collection removes those unused for 30 days.
 
 Change src/store.rs LAYOUT when an existing digest would refer to a different
 set of build inputs or output semantics.
