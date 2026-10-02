@@ -71,6 +71,7 @@ pub struct Config {
     pub rustflags: Vec<String>,
     pub target_dir: Option<std::path::PathBuf>,
     pub target_rustflags: Vec<(String, Vec<String>)>,
+    pub target_tools: Vec<(String, &'static str)>,
     pub rustc_wrapper: Option<String>,
     pub rustc_workspace_wrapper: Option<String>,
     pub unmodeled: Vec<String>,
@@ -156,10 +157,10 @@ pub fn config(dir: &Path) -> Config {
         }
         for (matcher, t) in doc.target.unwrap_or_default() {
             if t.linker.is_some() {
-                push_once(&mut out.unmodeled, &format!("[target.{matcher}.linker]"));
+                out.target_tools.push((matcher.clone(), "linker"));
             }
             if t.runner.is_some() {
-                push_once(&mut out.unmodeled, &format!("[target.{matcher}.runner]"));
+                out.target_tools.push((matcher.clone(), "runner"));
             }
             if out.target_rustflags.iter().any(|(m, _)| m == &matcher) {
                 if t.rustflags.is_some() {
@@ -331,21 +332,18 @@ pub fn resolve_target_flags(
     host_triple: &str,
     rustc_print: &[String],
 ) -> Result<Option<Vec<String>>, String> {
-    if cfg.target_rustflags.is_empty() {
+    if cfg.target_rustflags.is_empty() && cfg.target_tools.is_empty() {
         return Ok(None);
     }
     let host = host_cfgs(rustc_print);
+    for (matcher, key) in &cfg.target_tools {
+        if target_applies(matcher, host_triple, &host)? {
+            return Err(format!("[target.{matcher}.{key}] is not modeled"));
+        }
+    }
     let mut matched: Vec<(String, Vec<String>)> = Vec::new();
     for (matcher, flags) in &cfg.target_rustflags {
-        let hit = if let Some(expr) = matcher
-            .strip_prefix("cfg(")
-            .and_then(|e| e.strip_suffix(')'))
-        {
-            eval_cfg(expr, &host)
-                .ok_or_else(|| format!("[target.{matcher}] could not be evaluated"))?
-        } else {
-            matcher == host_triple
-        };
+        let hit = target_applies(matcher, host_triple, &host)?;
         if hit && !flags.is_empty() {
             matched.push((matcher.clone(), flags.clone()));
         }
@@ -355,6 +353,22 @@ pub fn resolve_target_flags(
     }
     matched.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(Some(matched.into_iter().flat_map(|(_, f)| f).collect()))
+}
+
+fn target_applies(
+    matcher: &str,
+    host_triple: &str,
+    host: &BTreeMap<String, Option<String>>,
+) -> Result<bool, String> {
+    match matcher
+        .strip_prefix("cfg(")
+        .and_then(|e| e.strip_suffix(')'))
+    {
+        Some(expr) => {
+            eval_cfg(expr, host).ok_or_else(|| format!("[target.{matcher}] could not be evaluated"))
+        }
+        None => Ok(matcher == host_triple),
+    }
 }
 
 #[cfg(test)]

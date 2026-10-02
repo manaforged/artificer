@@ -43,7 +43,8 @@ pub use gate::passthrough_reason;
 pub(crate) use home::resolve_path;
 pub use home::{control_home, default_home, env_script, purge, ready};
 pub use install::{
-    InstallReport, cargo_package, check_real_cargo, install, path_prepend, path_remove, uninstall,
+    InstallReport, cargo_package, check_real_cargo, install, path_prepend, path_remove,
+    refresh_shim, uninstall,
 };
 #[cfg(unix)]
 pub use install::{

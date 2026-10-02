@@ -184,6 +184,7 @@ pub fn artificer::profile_line(home: &std::path::Path, control: &std::path::Path
 pub fn artificer::profiles(home: &std::path::Path, shell: core::option::Option<&std::path::Path>, zdotdir: core::option::Option<&std::path::Path>) -> alloc::vec::Vec<std::path::PathBuf>
 pub fn artificer::purge(home: &std::path::Path) -> core::io::error::Result<bool>
 pub fn artificer::ready(home: &std::path::Path) -> bool
+pub fn artificer::refresh_shim(running: &std::path::Path, control: &std::path::Path, cargo_home: &std::path::Path) -> anyhow::Result<bool>
 pub fn artificer::remove_from_profiles(files: &[std::path::PathBuf], line: &str, control: &std::path::Path) -> anyhow::Result<alloc::vec::Vec<std::path::PathBuf>>
 pub fn artificer::report_error(message: impl core::fmt::Display)
 pub fn artificer::run_cmd(dir: &std::path::Path, packages: &[alloc::string::String], bin: core::option::Option<&str>, example: core::option::Option<&str>, home: &std::path::Path, opts: artificer::CheckOpts, args: &[alloc::string::String]) -> anyhow::Result<i32>

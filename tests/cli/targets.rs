@@ -81,3 +81,23 @@ fn an_exit_code_above_255_is_never_success() {
     let stat = artificer::store_stat(&tmp.path().join("shim/store")).unwrap();
     assert_eq!(stat.fallbacks, 0, "{:?}", stat.fallback_last);
 }
+
+#[test]
+fn a_linker_for_another_target_keeps_the_build_modeled() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("pkg");
+    write_pkg(&root);
+    fs::create_dir_all(root.join(".cargo")).unwrap();
+    fs::write(
+        root.join(".cargo/config.toml"),
+        "[target.riscv64gc-unknown-none-elf]\nlinker = \"riscv-none-elf-gcc\"\nrunner = \"qemu-riscv64\"\n",
+    )
+    .unwrap();
+    let home = tmp.path().join("home");
+    let status = artificer(&home, &root).arg("check").status().unwrap();
+    assert_eq!(status.code(), Some(0));
+    let units = fs::read_dir(home.join("units").join(artificer::LAYOUT))
+        .map(|d| d.count())
+        .unwrap_or(0);
+    assert!(units > 0, "the build must go through the store");
+}

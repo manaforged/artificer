@@ -88,9 +88,10 @@ fn config_names_unmodeled_settings_and_reads_wrappers() -> anyhow::Result<()> {
         cfg.unmodeled
     );
     assert!(
-        cfg.unmodeled.iter().any(|r| r.contains("linker")),
+        cfg.target_tools
+            .contains(&("aarch64-apple-darwin".to_string(), "linker")),
         "{:?}",
-        cfg.unmodeled
+        cfg.target_tools
     );
     assert!(
         cfg.unmodeled_doctest
@@ -192,4 +193,22 @@ fn unknown_config_surfaces_are_unmodeled() -> anyhow::Result<()> {
         cfg.unmodeled
     );
     Ok(())
+}
+
+#[test]
+fn a_linker_for_another_target_does_not_block_the_host() {
+    let cfg = Config {
+        target_tools: vec![
+            ("aarch64-unknown-linux-musl".to_string(), "linker"),
+            ("cfg(target_os = \"none\")".to_string(), "runner"),
+        ],
+        ..Default::default()
+    };
+    let print = ["target_os=\"linux\"".to_string()];
+    assert_eq!(
+        resolve_target_flags(&cfg, "x86_64-unknown-linux-gnu", &print),
+        Ok(None)
+    );
+    let err = resolve_target_flags(&cfg, "aarch64-unknown-linux-musl", &print).unwrap_err();
+    assert!(err.contains("linker"), "{err}");
 }
