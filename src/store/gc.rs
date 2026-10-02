@@ -76,8 +76,7 @@ pub(super) fn aged(meta: &fs::Metadata, max_age: Duration) -> bool {
 
 pub fn gc_units(home: &Path, max_age: Duration) -> Result<(u32, u64)> {
     let root = home.join("units").join(LAYOUT);
-    let mut gone = 0;
-    let mut bytes = 0;
+    let (mut gone, mut bytes) = super::layouts::purge_stale(home, max_age)?;
     if root.is_dir() {
         for entry in fs::read_dir(&root)? {
             let entry = entry?;

@@ -2,6 +2,7 @@ use super::*;
 use anyhow::{Result, anyhow};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::SystemTime;
 
 #[test]
 fn hold_serializes() -> Result<()> {
@@ -215,5 +216,29 @@ fn build_records_count_and_explain() -> Result<()> {
             ("profile `custom` belongs to cargo".to_string(), 1),
         ]
     );
+    Ok(())
+}
+
+#[test]
+fn gc_removes_unused_units_of_older_layouts() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let layout = tmp.path().join("units").join("v1");
+    let old = layout.join("u-old");
+    let fresh = layout.join("u-fresh");
+    for unit in [&old, &fresh] {
+        fs::create_dir_all(unit.join("out"))?;
+        fs::write(unit.join("ok"), "")?;
+    }
+    let long_ago = SystemTime::now() - AGE - Duration::from_secs(3600);
+    fs::File::options()
+        .write(true)
+        .open(old.join("ok"))?
+        .set_modified(long_ago)?;
+    let current = unit(tmp.path(), "u-current")?;
+    let (gone, _) = gc_units(tmp.path(), AGE)?;
+    assert_eq!(gone, 1);
+    assert!(!old.exists());
+    assert!(fresh.join("ok").is_file());
+    assert!(current.join("ok").is_file());
     Ok(())
 }

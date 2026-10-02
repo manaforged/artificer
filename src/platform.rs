@@ -77,6 +77,29 @@ pub(crate) fn replace_atomic(
     result
 }
 
+#[cfg(unix)]
+pub(crate) fn copy_file(src: &Path, dst: &Path) -> std::io::Result<()> {
+    let out = std::process::Command::new("/bin/cp")
+        .arg(src)
+        .arg(dst)
+        .stdin(std::process::Stdio::null())
+        .output()?;
+    if !out.status.success() {
+        return Err(std::io::Error::other(format!(
+            "cp {} {}: {}",
+            src.display(),
+            dst.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        )));
+    }
+    std::fs::set_permissions(dst, std::fs::metadata(src)?.permissions())
+}
+
+#[cfg(not(unix))]
+pub(crate) fn copy_file(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::copy(src, dst).map(drop)
+}
+
 #[cfg(test)]
 #[path = "platform_tests.rs"]
 mod tests;

@@ -101,6 +101,7 @@ fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
 mod tests;
 
 mod gc;
+mod layouts;
 use gc::aged;
 pub(crate) use gc::size;
 pub use gc::{AGE, CAP, CAP_SHARE, gc_cap, gc_units, has_room};

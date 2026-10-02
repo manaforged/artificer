@@ -164,7 +164,7 @@ The default layout below is relative to ARTIFICER_HOME:
 | serve.port, serve.token, serve.pid | Optional daemon control files |
 
 Unit use refreshes the unit marker. Daily garbage collection removes units
-unused for 30 days, key traces older than 30 days, and expired metadata
+unused for 30 days, in the current store layout and in older ones, key traces older than 30 days, and expired metadata
 entries. Every hour, a build also enforces the store limit by evicting the
 oldest units without active readers or writers first. Both passes run on a background thread beside
 a build, not before it.
