@@ -53,13 +53,23 @@ fn stock(dir: &Path) -> Command {
     cmd
 }
 
+fn shim_binary() -> &'static Path {
+    static SHIM: OnceLock<PathBuf> = OnceLock::new();
+    SHIM.get_or_init(|| {
+        let dir =
+            Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("shim-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create shim directory");
+        let binary = dir.join(format!("cargo{}", std::env::consts::EXE_SUFFIX));
+        if !binary.is_file() && fs::hard_link(env!("CARGO_BIN_EXE_artificer"), &binary).is_err() {
+            fs::copy(env!("CARGO_BIN_EXE_artificer"), &binary).expect("copy cargo shim");
+        }
+        binary
+    })
+}
+
 fn shim(home: &Path, dir: &Path) -> Command {
-    fs::create_dir_all(home).expect("create shim directory");
-    let binary = home.join(format!("cargo{}", std::env::consts::EXE_SUFFIX));
-    if !binary.is_file() && fs::hard_link(env!("CARGO_BIN_EXE_artificer"), &binary).is_err() {
-        fs::copy(env!("CARGO_BIN_EXE_artificer"), &binary).expect("copy cargo shim");
-    }
-    let mut cmd = Command::new(binary);
+    fs::create_dir_all(home).expect("create shim home");
+    let mut cmd = Command::new(shim_binary());
     cmd.env("ARTIFICER_REAL_CARGO", stock(dir).get_program())
         .env("ARTIFICER_HOME", home.join("store"))
         .env_remove("CARGO_TARGET_DIR")
@@ -127,6 +137,9 @@ fn tool_available(name: &str) -> bool {
 
 #[path = "cli/dispatch.rs"]
 mod dispatch;
+
+#[path = "cli/shim.rs"]
+mod shim_dispatch;
 
 #[path = "cli/cache.rs"]
 mod cache;

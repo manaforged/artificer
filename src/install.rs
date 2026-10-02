@@ -324,6 +324,27 @@ pub fn remove_from_user_path(dir: &Path) -> Result<bool> {
     Ok(true)
 }
 
+pub fn refresh_shim(running: &Path, control: &Path, cargo_home: &Path) -> Result<bool> {
+    let shim = control.join("bin").join(exe("cargo"));
+    if crate::resolve_path(running) != crate::resolve_path(&shim) {
+        return Ok(false);
+    }
+    let shim = shim.as_path();
+    let installed = cargo_home.join("bin").join(exe("artificer"));
+    let (Ok(newer), Ok(current)) = (fs::metadata(&installed), fs::metadata(shim)) else {
+        return Ok(false);
+    };
+    let stale = match (newer.modified(), current.modified()) {
+        (Ok(newer), Ok(current)) => newer > current,
+        _ => false,
+    };
+    if !stale || crate::resolve_path(&installed) == crate::resolve_path(shim) {
+        return Ok(false);
+    }
+    copy_launcher(&installed, shim)?;
+    Ok(true)
+}
+
 fn copy_launcher(src: &Path, dst: &Path) -> Result<()> {
     if crate::resolve_path(src) == crate::resolve_path(dst) {
         return Ok(());

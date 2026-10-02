@@ -119,7 +119,7 @@ fn config_reason(doctest: bool, pkg_dir: &Path, home: &Path) -> Result<Option<St
     if doctest && let Some(reason) = cfg.unmodeled_doctest.first() {
         return Ok(Some(format!("{reason} is not modeled")));
     }
-    if cfg.target_rustflags.is_empty() {
+    if cfg.target_rustflags.is_empty() && cfg.target_tools.is_empty() {
         return Ok(None);
     }
     let print = key::rustc_print_cfg(home, pkg_dir)?;

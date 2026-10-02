@@ -23,6 +23,12 @@ fn main() -> ExitCode {
         unsafe { env::set_var("PATH", path) };
     }
     let args_os = env::args_os().skip(1).collect::<Vec<_>>();
+    if shim()
+        && env::var_os(SHIM_REFRESHED).is_none()
+        && let Some(code) = refreshed(&args_os)
+    {
+        return code;
+    }
     let args = args_os
         .iter()
         .cloned()
@@ -46,6 +52,23 @@ fn main() -> ExitCode {
         Ok(Dispatch::Completed(code)) => code,
         Err(error) => failed(error),
     }
+}
+
+const SHIM_REFRESHED: &str = "ARTIFICER_SHIM_REFRESHED";
+
+fn refreshed(args: &[OsString]) -> Option<ExitCode> {
+    let exe = env::current_exe().ok()?;
+    let refreshed =
+        artificer::refresh_shim(&exe, &artificer::control_home(), &artificer::cargo_home());
+    if !matches!(refreshed, Ok(true)) {
+        return None;
+    }
+    let status = Command::new(&exe)
+        .args(args)
+        .env(SHIM_REFRESHED, "1")
+        .status()
+        .ok()?;
+    Some(child_exit(status.code().unwrap_or(1)))
 }
 
 fn failed(error: anyhow::Error) -> ExitCode {
