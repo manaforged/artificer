@@ -56,8 +56,15 @@ fn run_starts_the_program_from_the_target_directory() {
         .unwrap();
     assert!(out.status.success(), "{out:?}");
     let exe = PathBuf::from(String::from_utf8(out.stdout).unwrap().trim());
-    let expected = root
-        .join("target/debug")
+    let metadata = stock(&root)
+        .env_remove("CARGO_TARGET_DIR")
+        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    let metadata: serde_json::Value = serde_json::from_slice(&metadata.stdout).unwrap();
+    let expected = PathBuf::from(metadata["target_directory"].as_str().unwrap())
+        .join("debug")
         .join(format!("app{}", std::env::consts::EXE_SUFFIX));
     assert_eq!(
         exe.canonicalize().unwrap(),

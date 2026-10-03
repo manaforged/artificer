@@ -101,7 +101,7 @@ Change them together.
 
 Pull requests with code changes run Linux checks. Each code change that
 lands on `main` runs Linux, macOS, and Windows. Documentation-only changes
-run the content check. To release:
+run the same full suite. To release:
 
 1. Merge the version change and its finalized changelog entry through a
    pull request. Record a benchmark from `scripts/bench.py` in the entry

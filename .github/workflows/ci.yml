@@ -39,6 +39,28 @@ jobs:
         if: runner.os != 'Windows'
         shell: sh
         run: sh -n scripts/install.sh && ./scripts/install.sh --help
+      - name: Install, build a fixture through the shim, and uninstall
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
+          real_cargo=$(command -v cargo)
+          rustup_home=$(rustup show home)
+          toolchain=$(rustup show active-toolchain | cut -d' ' -f1)
+          scratch=$(mktemp -d -p "${RUNNER_TEMP:-$HOME}")
+          export HOME="$scratch/home" CARGO_HOME="$scratch/cargo" RUSTUP_HOME="$rustup_home" RUSTUP_TOOLCHAIN="$toolchain" ARTIFICER_HOME="$scratch/store"
+          mkdir -p "$HOME" "$CARGO_HOME/bin"
+          ARTIFICER_REAL_CARGO="$real_cargo" ./scripts/install.sh
+          . "$HOME/.artificer/env"
+          shim=$(command -v cargo)
+          test "$shim" = "$HOME/.artificer/bin/cargo"
+          "$shim" new --lib "$scratch/fixture"
+          "$shim" build --manifest-path "$scratch/fixture/Cargo.toml"
+          test -d "$ARTIFICER_HOME/units"
+          ./scripts/install.sh --uninstall
+          test ! -e "$CARGO_HOME/bin/artificer"
+          test ! -e "$HOME/.artificer/bin/cargo"
       - name: Validate PowerShell installer
         if: runner.os == 'Windows'
         shell: pwsh
@@ -58,6 +80,8 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Run Clippy
         run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Package the crate
+        run: cargo package --locked
 
   dependencies:
     name: Dependency policy
