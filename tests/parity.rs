@@ -206,3 +206,10 @@ mod profiles;
 
 #[path = "parity/outputs.rs"]
 mod outputs;
+
+#[cfg(unix)]
+#[path = "parity/native.rs"]
+mod native;
+
+#[path = "parity/cap.rs"]
+mod cap;
