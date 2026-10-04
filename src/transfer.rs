@@ -68,6 +68,9 @@ pub fn import(home: &Path, src: &Path) -> Result<TransferReport> {
         }
         let name = entry.file_name().to_string_lossy().into_owned();
         if let Some(bytes) = copy_unit(src, home, &name, None)? {
+            if let Some(lineage) = store::labelled(&Slot::new(home, &name)) {
+                store::adopt(home, &lineage, &name);
+            }
             report.units += 1;
             report.bytes += bytes;
         }

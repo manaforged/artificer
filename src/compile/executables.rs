@@ -82,7 +82,7 @@ fn compile_exe(
     let crate_name = target.name.replace('-', "_");
     let script = ensure_script(sess, pkg, node)?;
     let stamp = script.as_ref().map(Script::stamp);
-    let digest = unit_key::unit_digest(
+    let keyed = unit_key::unit_digest(
         sess,
         pkg,
         node,
@@ -93,7 +93,9 @@ fn compile_exe(
         stamp.as_deref(),
         false,
     )?;
-    let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &digest)?;
+    let digest = keyed.digest;
+    let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &digest)?
+        .lineage(keyed.lineage);
     let slot = &action.slot;
     let out = action.out.clone();
     let exe = out.join(if cfg!(windows) {

@@ -73,6 +73,8 @@ pub struct Action {
     pub name: String,
     pub slot: Slot,
     pub out: PathBuf,
+    home: PathBuf,
+    lineage: Option<String>,
     lease: Arc<std::fs::File>,
     writing: std::cell::Cell<bool>,
     _hold: Hold,
@@ -89,10 +91,18 @@ impl Action {
             name,
             slot,
             out,
+            home: home.to_path_buf(),
+            lineage: None,
             lease,
             writing: std::cell::Cell::new(false),
             _hold: hold,
         })
+    }
+
+    #[must_use]
+    pub fn lineage(mut self, lineage: Option<String>) -> Self {
+        self.lineage = lineage;
+        self
     }
 
     #[must_use]
@@ -129,7 +139,18 @@ impl Action {
     }
 
     pub fn finish(&self) -> Result<()> {
-        self.slot.mark()
+        let Some(lineage) = &self.lineage else {
+            return self.slot.mark();
+        };
+        if let Err(error) = store::label(&self.slot, lineage) {
+            crate::out::err(format!(
+                "artificer: could not label {}: {error:#}",
+                self.name
+            ));
+        }
+        self.slot.mark()?;
+        store::adopt(&self.home, lineage, &self.name);
+        Ok(())
     }
 
     pub(crate) fn invalidate(&self) -> Result<()> {

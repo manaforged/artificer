@@ -1,6 +1,9 @@
 use anyhow::Result;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
+
+const SCRATCH_GRACE: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Report {
@@ -63,17 +66,24 @@ pub(crate) fn gc_scratch(home: &Path) -> Result<u32> {
             continue;
         }
         let name = entry.file_name();
-        if units.join(&name).join("ok").is_file() {
-            let name = name.to_string_lossy();
-            let Some(_hold) = crate::store::try_hold(home, &name)? else {
-                continue;
-            };
-            let Some(_lease) = crate::store::try_write(home, &name)? else {
-                continue;
-            };
-            fs::remove_dir_all(entry.path())?;
-            n += 1;
+        let published = units.join(&name).join("ok").is_file();
+        let stale = entry
+            .metadata()?
+            .modified()?
+            .elapsed()
+            .is_ok_and(|age| age >= SCRATCH_GRACE);
+        if !published && !stale {
+            continue;
         }
+        let name = name.to_string_lossy();
+        let Some(_hold) = crate::store::try_hold(home, &name)? else {
+            continue;
+        };
+        let Some(_lease) = crate::store::try_write(home, &name)? else {
+            continue;
+        };
+        fs::remove_dir_all(entry.path())?;
+        n += 1;
     }
     Ok(n)
 }

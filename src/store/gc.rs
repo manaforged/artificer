@@ -138,6 +138,7 @@ pub fn gc_units(home: &Path, max_age: Duration) -> Result<(u32, u64)> {
             }
         }
     }
+    bytes += super::lineage::gc_pointers(home, max_age)?;
     let runs = home.join("rustc-runs");
     if let Ok(meta) = fs::metadata(&runs)
         && meta.is_file()

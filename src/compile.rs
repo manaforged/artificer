@@ -59,7 +59,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
                 .all(|t| matches!(t.as_str(), "cdylib" | "staticlib" | "dylib")));
     let script = ensure_script(sess, pkg, node)?;
     let stamp = script.as_ref().map(Script::stamp);
-    let digest = unit_key::unit_digest(
+    let keyed = unit_key::unit_digest(
         sess,
         pkg,
         node,
@@ -70,7 +70,9 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
         stamp.as_deref(),
         false,
     )?;
-    let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &digest)?;
+    let digest = keyed.digest;
+    let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &digest)?
+        .lineage(keyed.lineage);
     let slot = &action.slot;
     let out = action.out.clone();
 

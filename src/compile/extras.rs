@@ -111,7 +111,7 @@ fn check_one(
     let kind = format!("{prefix}{crate_name}");
     let script = ensure_script(sess, pkg, node)?;
     let stamp = script.as_ref().map(Script::stamp);
-    let digest = unit_key::unit_digest(
+    let keyed = unit_key::unit_digest(
         sess,
         pkg,
         node,
@@ -122,7 +122,9 @@ fn check_one(
         stamp.as_deref(),
         target_tmpdir,
     )?;
-    let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &digest)?;
+    let digest = keyed.digest;
+    let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &digest)?
+        .lineage(keyed.lineage);
     let slot = &action.slot;
     let out = action.out.clone();
     let mut cmd = sess.settings.rustc_cmd(pkg);

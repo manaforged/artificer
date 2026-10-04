@@ -106,6 +106,9 @@ use gc::aged;
 pub(crate) use gc::size;
 pub use gc::{AGE, CAP, CAP_SHARE, gc_cap, gc_units, has_room};
 
+mod lineage;
+pub(crate) use lineage::{adopt, label, labelled};
+
 mod locks;
 pub use locks::{Hold, hold, try_hold};
 

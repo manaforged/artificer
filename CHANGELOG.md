@@ -44,6 +44,12 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
   `~/.artificer` when nothing else is in it.
 - `artificer install` that cannot find the real Cargo leaves no files or
   directories behind.
+- The store keeps one unit per workspace crate, target kind, and settings
+  for each checkout. A rebuild after an edit evicts the unit it replaces,
+  including the units of crates that depend on the edited crate. Before,
+  every edit added a unit that stayed until the age limit or the size cap.
+- `artificer clean` and garbage collection remove scratch directories that
+  have no published unit and are more than an hour old.
 
 ## 0.1.1 - 2026-09-26
 

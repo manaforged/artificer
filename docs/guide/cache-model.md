@@ -43,6 +43,12 @@ removes least-recently-used units first. Daily garbage collection
 removes units unused for 30 days. Set `ARTIFICER_STORE_CAP_GB` to lower
 the cap. Larger values are clamped to the default limit.
 
+Workspace crates change with each edit, so each edit publishes a new
+unit. Artificer keeps the newest unit for each workspace crate, target
+kind, and settings, per checkout path, and evicts the unit it replaces
+when that unit is not in use. Registry and git dependencies are not
+evicted this way.
+
 Optional compile modes (`artificer mods`) add rmeta-only checks, linker
 probing, Cranelift for dev code, slimmer debug info, incremental
 cleanup, and the local daemon. See the [command and configuration

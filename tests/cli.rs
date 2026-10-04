@@ -155,3 +155,6 @@ mod output;
 
 #[path = "cli/targets.rs"]
 mod targets;
+
+#[path = "cli/store_growth.rs"]
+mod store_growth;
