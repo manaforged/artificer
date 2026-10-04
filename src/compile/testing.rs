@@ -165,6 +165,14 @@ impl TestUnit<'_> {
         }
     }
 
+    fn exe(&self) -> executables::Exe<'_> {
+        executables::Exe {
+            sess: self.sess,
+            pkg: self.pkg,
+            target: self.target,
+        }
+    }
+
     fn compile(
         &self,
         action: &action::Action,
@@ -172,17 +180,7 @@ impl TestUnit<'_> {
         manifest: &str,
         exe: PathBuf,
     ) -> Result<TestBin> {
-        let (sess, pkg, out) = (self.sess, self.pkg, &action.out);
-        action.prepare()?;
-        std::fs::create_dir_all(out)?;
-        invoke::note_rustc(&sess.settings.home);
-        invoke::run_rustc(cmd, sess, pkg, self.target, out, None)?;
-        std::fs::write(out.join(unit_key::DEPS_FILE), manifest)?;
-        if !exe.is_file() {
-            bail!("no test exe {} in {}", exe.display(), out.display());
-        }
-        action.finish()?;
-        sess.retain(action.lease()?);
+        self.exe().build(action, cmd, manifest, &exe)?;
         Ok(self.bin(exe, RustcOutcome::Ran))
     }
 
@@ -193,22 +191,10 @@ impl TestUnit<'_> {
         manifest: &str,
         cmd: &Command,
     ) -> Result<Option<TestBin>> {
-        let (sess, pkg) = (self.sess, self.pkg);
-        if !action.slot.hit() {
-            return Ok(None);
-        }
-        if !unit_key::deps_match(&action.out, manifest)
-            || !crate::inputs::matches(&sess.settings.home, &action.out, pkg.root(), cmd)
-        {
-            action.invalidate()?;
-            return Ok(None);
-        }
-        if !exe.is_file() {
-            return Ok(None);
-        }
-        sess.retain(action.lease()?);
-        invoke::replay(sess, pkg, self.target, &action.out);
-        Ok(Some(self.bin(exe.to_path_buf(), RustcOutcome::Restored)))
+        Ok(self
+            .exe()
+            .restored(action, exe, manifest, cmd)?
+            .then(|| self.bin(exe.to_path_buf(), RustcOutcome::Restored)))
     }
 }
 
@@ -247,11 +233,7 @@ fn compile_test_one(
     let action = action::Action::begin(&sess.settings.home, action::Kind::Test, &keyed.digest)?
         .lineage(keyed.lineage);
     let out = action.out.clone();
-    let exe = out.join(if cfg!(windows) {
-        format!("{crate_name}.exe")
-    } else {
-        crate_name.clone()
-    });
+    let exe = out.join(executables::exe_file(&crate_name));
     let mut cmd = unit.command(bin_exe, &out, script.as_ref())?;
     let manifest = unit_key::dep_manifest(sess, node, true, (!is_lib).then_some(pkg.id.as_str()))?;
     if let Some(restored) = unit.restore(&action, &exe, &manifest, &cmd)? {

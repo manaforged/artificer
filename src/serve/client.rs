@@ -187,58 +187,76 @@ fn served(home: &Path, req: &mut Request) -> Option<(Reply, Instant)> {
     call(home, req).ok().map(|reply| (reply, sent))
 }
 
-pub fn try_run(home: &Path, req: &mut Request) -> Option<Result<i32>> {
+enum Readiness {
+    Use,
+    Skip,
+    Failed(anyhow::Error),
+}
+
+fn readiness(home: &Path) -> Readiness {
     if cfg!(windows)
         || std::env::var_os("ARTIFICER_NOSERVE").is_some()
         || crate::schedule::explicit_jobs()
     {
-        return None;
+        return Readiness::Skip;
     }
     if let Ok(recorded) = fs::read_to_string(home.join("serve.env"))
         && recorded != compiler_env_snapshot()
     {
-        return None;
+        return Readiness::Skip;
     }
     match crate::mods::load(home) {
-        Ok(mods) if !mods.serve => return None,
+        Ok(mods) if !mods.serve => return Readiness::Skip,
         Ok(_) => {}
-        Err(error) => return Some(Err(error)),
+        Err(error) => return Readiness::Failed(error),
     }
     if fs::read_to_string(home.join("serve.build")).is_ok_and(|b| b != build_stamp()) {
         return match stop(home) {
-            Ok(()) => None,
-            Err(error) => Some(Err(error)),
+            Ok(()) => Readiness::Skip,
+            Err(error) => Readiness::Failed(error),
         };
+    }
+    Readiness::Use
+}
+
+fn outcome(reply: Reply) -> Option<Result<i32>> {
+    if reply.ok {
+        if !reply.stdout.is_empty() {
+            print!("{}", reply.stdout);
+        }
+        if !reply.stderr.is_empty() {
+            eprint!("{}", reply.stderr);
+        }
+        return Some(Ok(reply.code));
+    }
+    if reply.err == "bad token" {
+        return None;
+    }
+    if !reply.stderr.is_empty() {
+        eprint!("{}", reply.stderr);
+    }
+    if reply.err.is_empty() {
+        return Some(Ok(reply.code));
+    }
+    Some(Err(if reply.code == 2 {
+        crate::cargo::Unmodeled(reply.err).into()
+    } else {
+        anyhow::anyhow!("{}", reply.err)
+    }))
+}
+
+pub fn try_run(home: &Path, req: &mut Request) -> Option<Result<i32>> {
+    match readiness(home) {
+        Readiness::Use => {}
+        Readiness::Skip => return None,
+        Readiness::Failed(error) => return Some(Err(error)),
     }
     req.token = read_token(home).unwrap_or_default();
     req.profile = crate::profile::id();
-    let (mut r, sent) =
+    let (mut reply, sent) =
         crate::profile::span(crate::profile::WrapperPhase::Serve, || served(home, req))?;
-    if let Some(part) = r.profile.take() {
+    if let Some(part) = reply.profile.take() {
         crate::profile::merge(part, sent);
     }
-    if r.ok {
-        if !r.stdout.is_empty() {
-            print!("{}", r.stdout);
-        }
-        if !r.stderr.is_empty() {
-            eprint!("{}", r.stderr);
-        }
-        return Some(Ok(r.code));
-    }
-    if r.err == "bad token" {
-        return None;
-    }
-    if !r.stderr.is_empty() {
-        eprint!("{}", r.stderr);
-    }
-    if !r.err.is_empty() {
-        Some(Err(if r.code == 2 {
-            crate::cargo::Unmodeled(r.err).into()
-        } else {
-            anyhow::anyhow!("{}", r.err)
-        }))
-    } else {
-        Some(Ok(r.code))
-    }
+    outcome(reply)
 }
