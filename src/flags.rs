@@ -103,7 +103,9 @@ fn threads_n(cores: usize) -> usize {
 }
 
 fn rustc_lib(extra: &[String], toolchain_dir: &Path) -> bool {
-    let dir = scratch("lib");
+    let Some(dir) = scratch("lib") else {
+        return false;
+    };
     let src = dir.join("lib.rs");
     if std::fs::write(&src, "pub fn _n() {}\n").is_err() {
         return false;
@@ -123,7 +125,9 @@ fn rustc_lib(extra: &[String], toolchain_dir: &Path) -> bool {
 }
 
 fn rustc_bin(extra: &[String], toolchain_dir: &Path) -> bool {
-    let dir = scratch("bin");
+    let Some(dir) = scratch("bin") else {
+        return false;
+    };
     let src = dir.join("main.rs");
     if std::fs::write(&src, "fn main() {}\n").is_err() {
         return false;
@@ -149,8 +153,12 @@ fn rustc_bin(extra: &[String], toolchain_dir: &Path) -> bool {
     ok
 }
 
-fn scratch(tag: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("artificer-{tag}-{}", std::process::id()))
+fn scratch(tag: &str) -> Option<std::path::PathBuf> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("artificer-{tag}-{}-{n}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
 }
 
 #[cfg(test)]

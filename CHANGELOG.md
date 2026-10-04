@@ -9,6 +9,9 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- The `threads`, `cranelift`, and `linker` modes take effect again. Their
+  compiler probe wrote into a directory it never created, so each probe
+  failed and the mode stayed off.
 - A build no longer hangs when its standard error closes early, as in
   `cargo build 2>&1 | head`. Artificer's own messages ignore a closed pipe,
   and a build worker that crashes now fails the build instead of leaving
