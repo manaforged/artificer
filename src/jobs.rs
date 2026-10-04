@@ -8,6 +8,9 @@ use std::path::Path;
 #[cfg(unix)]
 use std::path::PathBuf;
 
+#[cfg(unix)]
+mod held;
+
 pub fn install(home: &Path) -> Result<()> {
     fs::create_dir_all(home)?;
     let tag = home.join("CACHEDIR.TAG");
@@ -178,36 +181,24 @@ pub(crate) fn share(cmd: &mut std::process::Command, home: &Path) {
 
 pub struct Permit {
     #[cfg(unix)]
-    file: Option<fs::File>,
+    _token: Option<held::Token>,
 }
 
 pub fn acquire(home: &Path) -> Result<Permit> {
     #[cfg(unix)]
     {
-        use std::io::Read;
         let path = fifo(home);
         if !path.exists() {
-            return Ok(Permit { file: None });
+            return Ok(Permit { _token: None });
         }
-        let mut file = fs::OpenOptions::new().read(true).write(true).open(&path)?;
-        let mut byte = [0u8; 1];
-        file.read_exact(&mut byte).context("jobserver token")?;
-        Ok(Permit { file: Some(file) })
+        Ok(Permit {
+            _token: Some(held::take(&path)?),
+        })
     }
     #[cfg(not(unix))]
     {
         let _ = home;
         Ok(Permit {})
-    }
-}
-
-impl Drop for Permit {
-    fn drop(&mut self) {
-        #[cfg(unix)]
-        if let Some(file) = &mut self.file {
-            use std::io::Write;
-            drop(file.write_all(b"+"));
-        }
     }
 }
 

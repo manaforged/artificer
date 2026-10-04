@@ -9,6 +9,10 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- A build killed while it held job tokens no longer stalls every other
+  build on the machine. Each held token is recorded under a lock the
+  system releases when its process dies, and a build that waits two
+  seconds for a token takes back any whose holder is gone.
 - The `slim` mode lowers debug info to line tables again. Its flag came
   before the profile's `-C debuginfo`, so rustc used the profile's value.
 - rustc receives Artificer's job token pool, as it receives Cargo's, so
