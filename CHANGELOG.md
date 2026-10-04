@@ -60,6 +60,9 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 - `[resolver] incompatible-rust-versions` in Cargo configuration no longer
   sends builds to Cargo. It only changes how versions are picked when the
   lockfile is written. Other `[resolver]` keys still do.
+- A store written by an earlier release, whose `CACHEDIR.TAG` holds only the
+  signature line, is adopted and its tag updated. Before, the store was
+  refused and every build ran Cargo.
 
 ## 0.1.1 - 2026-09-26
 
