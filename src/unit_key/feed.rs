@@ -65,6 +65,10 @@ pub(super) fn feed_inputs(
     env.sort();
     key.feed_list(&env);
     key.feed_list(&sess.settings.threads);
+    let trusted = super::trusted_args(sess, pkg);
+    if !trusted.is_empty() {
+        key.feed_list(trusted);
+    }
     let mut feats = features.to_vec();
     feats.sort();
     key.feed_list(&feats);

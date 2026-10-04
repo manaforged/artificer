@@ -4,7 +4,7 @@
 
 ## artificer-build 0.1.1
 
-- [Every public item, one per line](reference/artificer-build/api.txt): 329 lines
+- [Every public item, one per line](reference/artificer-build/api.txt): 330 lines
 - [API overview](reference/artificer-build/index.html): tasks, modules, features, and examples
 - [API changes by release](reference/artificer-build/changes.html)
-- [artificer](reference/artificer-build/artificer.html): 223 items
+- [artificer](reference/artificer-build/artificer.html): 224 items

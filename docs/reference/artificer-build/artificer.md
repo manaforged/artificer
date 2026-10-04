@@ -143,6 +143,7 @@
 | <code>slim: bool</code> |  |
 | <code>sweep: bool</code> |  |
 | <code>threads: bool</code> |  |
+| <code>trust: bool</code> |  |
 
 **Trait implementations:** <code>Clone</code>, <code>Default</code>, <code>Debug</code>, <code>Serialize</code>, <code>Deserialize&lt;'de&gt;</code>
 

@@ -28,6 +28,18 @@ fn from_registry(pkg: &Package) -> bool {
     from_registry_in(pkg, &cargo::cargo_home())
 }
 
+pub(crate) fn trusted_args<'a>(sess: &'a Session, pkg: &Package) -> &'a [String] {
+    registry_only(pkg, &cargo::cargo_home(), &sess.settings.trusted)
+}
+
+fn registry_only<'a>(pkg: &Package, cargo_home: &Path, args: &'a [String]) -> &'a [String] {
+    if from_registry_in(pkg, cargo_home) {
+        args
+    } else {
+        &[]
+    }
+}
+
 fn from_registry_in(pkg: &Package, cargo_home: &Path) -> bool {
     if pkg.source.is_none() {
         return false;

@@ -98,6 +98,18 @@ fn probe_threads(dir: &Path) -> Vec<String> {
     Vec::new()
 }
 
+pub fn trusted(home: &Path, rustc: &str, dir: &Path) -> Vec<String> {
+    stamped(home, "trusted", rustc, || probe_trusted(dir))
+}
+
+fn probe_trusted(dir: &Path) -> Vec<String> {
+    let args = vec!["-Z".into(), "trusted-crate".into()];
+    if rustc_lib(&args, dir) {
+        return args;
+    }
+    Vec::new()
+}
+
 fn threads_n(cores: usize) -> usize {
     cores.clamp(1, 8)
 }

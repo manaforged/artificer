@@ -140,6 +140,7 @@ pub artificer::Mods::serve: bool
 pub artificer::Mods::slim: bool
 pub artificer::Mods::sweep: bool
 pub artificer::Mods::threads: bool
+pub artificer::Mods::trust: bool
 impl artificer::Mods
 pub fn artificer::Mods::get(&self, name: &str) -> anyhow::Result<bool>
 pub fn artificer::Mods::names() -> &'static [&'static str]

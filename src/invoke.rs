@@ -30,6 +30,9 @@ pub(crate) fn style(sess: &Session, cmd: &mut Command, link: bool, pkg: &Package
     for a in &settings.threads {
         cmd.arg(a);
     }
+    for a in crate::unit_key::trusted_args(sess, pkg) {
+        cmd.arg(a);
+    }
     if settings.mods.slim {
         cmd.arg("-C").arg("split-debuginfo=off");
     }

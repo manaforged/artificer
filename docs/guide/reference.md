@@ -127,6 +127,7 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | linker | off | Probe for mold, wild, ld64.mold, or lld |
 | meta-cache | on | Cache Cargo metadata outside the workspace target directory |
 | threads | off | Use up to 8 rustc parallel frontend threads when rustc accepts them |
+| trust | on | Skip checks that only report errors in crates.io dependencies when rustc accepts `-Z trusted-crate` |
 | serve | off | Send handled builds to the local daemon and start it on demand. Not available on Windows |
 
 ## Environment variables

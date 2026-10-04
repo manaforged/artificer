@@ -25,6 +25,7 @@ pub struct Settings {
     pub runner: Option<Vec<String>>,
     pub env: Vec<(String, String)>,
     pub threads: Vec<String>,
+    pub trusted: Vec<String>,
     pub profile: Vec<String>,
     pub build_profile: Vec<String>,
     pub overrides: Overrides,
@@ -191,6 +192,11 @@ impl Settings {
         );
         let target_flags = target_flags(&cfg, &host, home, dir)?;
         let env = crate::config::effective_env(&cfg.env);
+        let trusted = if mods.trust {
+            flags::trusted(home, &rustc, dir)
+        } else {
+            Vec::new()
+        };
         let (codegen, linker, threads) =
             mod_flags(&mods, release, home, &rustc, dir, &target_flags.host_linker);
         let profile = crate::manifest::profile(ws, name, crate::manifest::UnitUse::Runtime);
@@ -220,6 +226,7 @@ impl Settings {
             runner: target_flags.runner,
             env,
             threads,
+            trusted,
             profile,
             build_profile,
             overrides,

@@ -28,6 +28,7 @@ pub struct Mods {
     #[serde(rename = "meta-cache")]
     pub meta_cache: bool,
     pub threads: bool,
+    pub trust: bool,
     pub serve: bool,
 }
 
@@ -42,6 +43,7 @@ impl Default for Mods {
             linker: false,
             meta_cache: true,
             threads: false,
+            trust: true,
             serve: false,
         }
     }
@@ -58,6 +60,7 @@ impl Mods {
             "linker",
             "meta-cache",
             "threads",
+            "trust",
             "serve",
         ]
     }
@@ -72,6 +75,7 @@ impl Mods {
             "linker" => self.linker,
             "meta-cache" => self.meta_cache,
             "threads" => self.threads,
+            "trust" => self.trust,
             "serve" => self.serve,
             other => bail!("unknown mod: {other}"),
         })
@@ -87,6 +91,7 @@ impl Mods {
             "linker" => self.linker = on,
             "meta-cache" => self.meta_cache = on,
             "threads" => self.threads = on,
+            "trust" => self.trust = on,
             "serve" if on && cfg!(windows) => {
                 bail!("the serve daemon is not available on Windows")
             }
