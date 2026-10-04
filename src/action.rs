@@ -57,14 +57,16 @@ pub enum Kind {
     Unit,
     Test,
     Script,
+    ScriptBin,
 }
 
 impl Kind {
-    fn prefix(self) -> &'static str {
+    pub(crate) fn prefix(self) -> &'static str {
         match self {
             Self::Unit => "u-",
             Self::Test => "test-",
             Self::Script => "script-",
+            Self::ScriptBin => "scriptbin-",
         }
     }
 }

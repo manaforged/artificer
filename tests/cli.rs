@@ -170,3 +170,6 @@ mod remote;
 
 #[path = "cli/coverage.rs"]
 mod coverage;
+
+#[path = "cli/scripts.rs"]
+mod scripts;

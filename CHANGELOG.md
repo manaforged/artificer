@@ -91,6 +91,9 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 - `[env]` and `[patch]` in Cargo configuration, and a `linker` or `runner`
   for the host target, now build through the cache. `[env]` values reach
   rustc, build scripts, rustdoc, tests, and `run`, and are part of the key.
+- A build script is compiled once per change to `build.rs`, its
+  build-dependencies, features, or compiler. Editing other package files
+  reruns the compiled script, as Cargo does, instead of compiling it again.
 
 ## 0.1.1 - 2026-09-26
 

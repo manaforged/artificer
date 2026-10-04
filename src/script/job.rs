@@ -8,6 +8,10 @@ use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const BIN_CRATE: &str = "build_script_build";
+const BIN_KEY_TAG: &[u8] = b"build-script-bin-v1";
+const RUN_KEY_TAG: &[u8] = b"build-script-env-v9";
+
 pub(super) struct Job<'a> {
     pub(super) pkg: &'a Package,
     pub(super) settings: &'a Settings,
@@ -29,15 +33,37 @@ fn feed_sorted(key: &mut Key, mut items: Vec<String>) {
 }
 
 impl Job<'_> {
-    pub(super) fn digest(&self) -> Result<String> {
+    pub(super) fn bin_digest(&self) -> Result<String> {
+        let mut key = Key::new();
+        key.feed(BIN_KEY_TAG);
+        self.feed_compile(&mut key)?;
+        Ok(key.digest())
+    }
+
+    pub(super) fn digest(&self, bin_unit: &str) -> Result<String> {
+        let settings = self.settings;
+        let mut key = Key::new();
+        key.feed(RUN_KEY_TAG);
+        self.feed_compile(&mut key)?;
+        key.feed_str(&std::env::var("RUSTDOC").unwrap_or_else(|_| "rustdoc".into()));
+        feed_sorted(
+            &mut key,
+            self.dep_env
+                .iter()
+                .map(|(k, v)| format!("{k}={}", portable(&settings.home, v)))
+                .collect(),
+        );
+        key.feed_str(bin_unit);
+        key.feed(self.source_key.as_bytes());
+        Ok(key.digest())
+    }
+
+    fn feed_compile(&self, key: &mut Key) -> Result<()> {
         let (pkg, settings) = (self.pkg, self.settings);
         let home = Some(settings.home.as_path());
-        let mut key = Key::new();
-        key.feed(b"build-script-env-v8");
         key.feed(&[u8::from(settings.release), u8::from(self.debug)]);
         key.feed_str(self.opt_level);
         key.feed_str(&crate::key::rustc_bin());
-        key.feed_str(&std::env::var("RUSTDOC").unwrap_or_else(|_| "rustdoc".into()));
         for flag in &settings.rustflags {
             key.feed_str(flag);
         }
@@ -47,14 +73,7 @@ impl Job<'_> {
                 .iter()
                 .map(|a| portable(&settings.home, a)),
         );
-        feed_sorted(&mut key, settings.portable_env());
-        feed_sorted(
-            &mut key,
-            self.dep_env
-                .iter()
-                .map(|(k, v)| format!("{k}={}", portable(&settings.home, v)))
-                .collect(),
-        );
+        feed_sorted(key, settings.portable_env());
         for w in &settings.wrapper_chain(pkg) {
             key.feed(w.as_bytes());
         }
@@ -63,12 +82,12 @@ impl Job<'_> {
         key.feed(pkg.name.as_bytes());
         key.feed(pkg.version.as_bytes());
         key.feed(pkg.source.as_deref().unwrap_or("path").as_bytes());
-        feed_sorted(&mut key, self.features.to_vec());
+        feed_sorted(key, self.features.to_vec());
         if self.script.src_path.is_file() {
             key.feed_str(&crate::digest::file(home, &self.script.src_path)?);
         }
         feed_sorted(
-            &mut key,
+            key,
             self.externs
                 .iter()
                 .map(|(n, p)| format!("{n}={}", portable(&settings.home, &p.display().to_string())))
@@ -77,10 +96,9 @@ impl Job<'_> {
         for (_, path) in self.externs {
             key.feed_str(&crate::digest::file(home, path)?);
         }
-        self.feed_manifest(&mut key);
+        self.feed_manifest(key);
         key.feed_str(&self.script.edition);
-        key.feed(self.source_key.as_bytes());
-        Ok(key.digest())
+        Ok(())
     }
 
     fn feed_manifest(&self, key: &mut Key) {
@@ -108,7 +126,7 @@ impl Job<'_> {
         let mut cmd = settings.rustc_cmd(pkg);
         cmd.args([
             "--crate-name",
-            "build_script_build",
+            BIN_CRATE,
             "--crate-type",
             "bin",
             "--edition",
@@ -119,7 +137,7 @@ impl Job<'_> {
         cmd.arg("--emit=dep-info,link");
         cmd.args(&settings.rustflags);
         cmd.args(&settings.host_linker);
-        cmd.env("CARGO_CRATE_NAME", "build_script_build");
+        cmd.env("CARGO_CRATE_NAME", BIN_CRATE);
         crate::cargo::set_package_env(&mut cmd, pkg);
         for feat in self.features {
             cmd.arg("--cfg").arg(format!("feature=\"{feat}\""));
@@ -138,10 +156,7 @@ impl Job<'_> {
     }
 
     pub(super) fn run(&self, bin_dir: &Path, out_dir: &Path) -> Result<String> {
-        let bin = bin_dir.join(format!(
-            "build_script_build{}",
-            std::env::consts::EXE_SUFFIX
-        ));
+        let bin = bin_dir.join(bin_file());
         let mut ran = self.run_cmd(&bin, out_dir)?;
         let ran = ran.output().context("run build.rs")?;
         if !ran.status.success() {
@@ -210,6 +225,10 @@ impl Job<'_> {
         }
         Ok(ran)
     }
+}
+
+pub(super) fn bin_file() -> String {
+    format!("{BIN_CRATE}{}", std::env::consts::EXE_SUFFIX)
 }
 
 fn run_failure(pkg: &Package, bin: &Path, ran: &std::process::Output) -> String {

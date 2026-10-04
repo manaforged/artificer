@@ -48,19 +48,14 @@ pub fn ensure(
             .is_some_and(|v| v != "0" && v != "none"),
         source_key: &source_key,
     };
-    let digest = job.digest()?;
-    if std::env::var("ARTIFICER_DEBUG_KEY").is_ok_and(|w| w == pkg.name) {
-        eprintln!(
-            "SCRIPT {} digest={digest} feats={features:?} externs={}",
-            pkg.name,
-            externs.len(),
-        );
-    }
+    let bin_key = job.bin_digest()?;
+    let bin_unit = format!("{}{bin_key}", Kind::ScriptBin.prefix());
+    let digest = job.digest(&bin_unit)?;
+    debug_key(pkg, &digest, features, externs.len());
     let action = Action::begin(&settings.home, Kind::Script, &digest)?;
     let out_dir = action.out.clone();
     let bin_dir = action.slot.dir.join("bin");
-    let mut rustc_cmd = job.rustc_cmd(&bin_dir);
-    if let Some(recorded) = restorable(&action, &job, &rustc_cmd) {
+    if let Some(recorded) = restorable(&action, &job, &bin_unit) {
         let stamp = fs::read_to_string(action.slot.dir.join(STAMP_FILE))
             .unwrap_or_else(|_| stamp_of(&settings.home, &recorded, &out_dir));
         return Ok(Script {
@@ -74,9 +69,9 @@ pub fn ensure(
 
     action.invalidate()?;
     fs::create_dir_all(&out_dir)?;
-    fs::create_dir_all(&bin_dir)?;
-    rustc_cmd.arg(&script.src_path);
-    crate::invoke::run_rustc(&mut rustc_cmd, sess, pkg, script, &bin_dir)?;
+    let (bin_lease, compiled) = compile(sess, &job, &bin_key)?;
+    crate::artifact::place_exe(&compiled.join(job::bin_file()), &bin_dir, &job::bin_file())?;
+    sess.retain(bin_lease);
     let output = job.run(&bin_dir, &out_dir)?;
     let recorded = crate::inputs::portable(&settings.home, &output);
     let stamp = stamp_of(&settings.home, &recorded, &out_dir);
@@ -101,12 +96,35 @@ fn record(action: &Action, job: &Job, recorded: &str, stamp: &str) -> Result<()>
     Ok(())
 }
 
-fn restorable(action: &Action, job: &Job, rustc_cmd: &std::process::Command) -> Option<String> {
+fn compile(
+    sess: &crate::session::Session,
+    job: &Job,
+    bin_key: &str,
+) -> Result<(std::sync::Arc<std::fs::File>, PathBuf)> {
+    let (pkg, home) = (job.pkg, &job.settings.home);
+    let action = Action::begin(home, Kind::ScriptBin, bin_key)?;
+    let bin_dir = action.out.clone();
+    let mut rustc_cmd = job.rustc_cmd(&bin_dir);
+    if action.hit() && crate::inputs::matches(home, &bin_dir, pkg.root(), &rustc_cmd) {
+        return Ok((action.lease()?, bin_dir));
+    }
+    action.invalidate()?;
+    fs::create_dir_all(&bin_dir)?;
+    rustc_cmd.arg(&job.script.src_path);
+    crate::invoke::run_rustc(&mut rustc_cmd, sess, pkg, job.script, &bin_dir)?;
+    action.finish()?;
+    Ok((action.lease()?, bin_dir))
+}
+
+fn restorable(action: &Action, job: &Job, bin_unit: &str) -> Option<String> {
     let pkg = job.pkg;
     let dir = &action.slot.dir;
-    if !action.hit()
-        || !crate::inputs::matches(&job.settings.home, &dir.join("bin"), pkg.root(), rustc_cmd)
-    {
+    if !action.hit() {
+        return None;
+    }
+    let home = &job.settings.home;
+    let compiled = crate::store::Slot::new(home, bin_unit).out_dir();
+    if !crate::inputs::matches(home, &compiled, pkg.root(), &job.rustc_cmd(&compiled)) {
         return None;
     }
     let recorded = fs::read_to_string(dir.join("output")).ok()?;
@@ -126,3 +144,12 @@ pub use directives::{
 };
 
 use directives::input_stamp;
+
+fn debug_key(pkg: &Package, digest: &str, features: &[String], externs: usize) {
+    if std::env::var("ARTIFICER_DEBUG_KEY").is_ok_and(|w| w == pkg.name) {
+        eprintln!(
+            "SCRIPT {} digest={digest} feats={features:?} externs={externs}",
+            pkg.name,
+        );
+    }
+}
