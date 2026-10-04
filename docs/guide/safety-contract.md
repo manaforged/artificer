@@ -10,9 +10,10 @@ sees:
   not apply;
 - a `[profile]` table, `build.rustc`, `build.target`, or target
   linker/runner in `.cargo/config.toml`;
-- Cargo-owned environment it would otherwise ignore (`CARGO_PROFILE_*`,
-  `CARGO_UNSTABLE_*`, `CARGO_TARGET_*` except `CARGO_TARGET_DIR`, and the
-  `CARGO_BUILD_*` settings that change the build);
+- Cargo-owned environment it would otherwise ignore (`CARGO_PROFILE_*`
+  other than the profile keys it applies, `CARGO_UNSTABLE_*`,
+  `CARGO_TARGET_*` except `CARGO_TARGET_DIR`, and the `CARGO_BUILD_*`
+  settings that change the build);
 - a feature probe (the step that asks Cargo which features are enabled)
   that cannot resolve the per-invocation feature set;
 - a package that Cargo builds with different features for build scripts

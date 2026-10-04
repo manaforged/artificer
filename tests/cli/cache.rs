@@ -334,7 +334,7 @@ fn unmodeled_environment_falls_back() {
     let root = tmp.path().join("pkg");
     write_pkg(&root);
     let home = tmp.path().join("home");
-    for name in ["CARGO_PROFILE_DEV_OPT_LEVEL", "CARGO_BUILD_RUSTFLAGS"] {
+    for name in ["CARGO_PROFILE_DEV_TRIM_PATHS", "CARGO_BUILD_RUSTFLAGS"] {
         let out = artificer(&home, &root)
             .arg("check")
             .env(name, "1")

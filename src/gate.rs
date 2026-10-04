@@ -182,7 +182,6 @@ pub(crate) fn gated_name(names: impl Iterator<Item = String>, doctest: bool) -> 
         }
         let gated = ALWAYS.contains(&name.as_str())
             || (doctest && DOCTEST.contains(&name.as_str()))
-            || name.starts_with("CARGO_PROFILE_")
             || name.starts_with("CARGO_UNSTABLE_")
             || name.starts_with("CARGO_TARGET_")
             || (name.starts_with("CARGO_") && !cargo_env_modeled(&name));
@@ -229,7 +228,9 @@ fn cargo_env_modeled(name: &str) -> bool {
         "CARGO_BUILD_RUSTC_WRAPPER",
         "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
     ];
-    EXACT.contains(&name) || PREFIXES.iter().any(|p| name.starts_with(p))
+    EXACT.contains(&name)
+        || PREFIXES.iter().any(|p| name.starts_with(p))
+        || crate::manifest::profile_env_modeled(name)
 }
 
 pub(crate) fn gated_env(doctest: bool) -> Option<String> {

@@ -7,8 +7,8 @@ fn names<'a>(list: &'a [&'a str]) -> impl Iterator<Item = String> + 'a {
 #[test]
 fn cargo_owned_names_are_gated() {
     assert_eq!(
-        gated_name(names(&["CARGO_PROFILE_DEV_OPT_LEVEL"]), false).as_deref(),
-        Some("CARGO_PROFILE_DEV_OPT_LEVEL")
+        gated_name(names(&["CARGO_PROFILE_DEV_TRIM_PATHS"]), false).as_deref(),
+        Some("CARGO_PROFILE_DEV_TRIM_PATHS")
     );
     assert_eq!(
         gated_name(names(&["CARGO_BUILD_RUSTFLAGS"]), false).as_deref(),
@@ -95,4 +95,23 @@ fn older_cargo_falls_back() {
         older_than("nonsense").is_some(),
         "a version format Artificer cannot read must fall back"
     );
+}
+
+#[test]
+fn profile_keys_artificer_applies_are_not_gated() {
+    for name in [
+        "CARGO_PROFILE_DEV_DEBUG",
+        "CARGO_PROFILE_RELEASE_CODEGEN_UNITS",
+        "CARGO_PROFILE_MY_CI_OPT_LEVEL",
+    ] {
+        assert_eq!(gated_name(names(&[name]), false), None, "{name}");
+    }
+    for name in [
+        "CARGO_PROFILE_DEV_PACKAGE_SERDE_OPT_LEVEL",
+        "CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG",
+        "CARGO_PROFILE_DEV_INHERITS",
+        "CARGO_PROFILE_DEBUG",
+    ] {
+        assert_eq!(gated_name(names(&[name]), false).as_deref(), Some(name));
+    }
 }

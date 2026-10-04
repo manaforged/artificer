@@ -234,6 +234,9 @@ pub use profile::{Overrides, overrides};
 mod profile_args;
 pub use profile_args::{UnitUse, profile, profile_gate};
 
+mod profile_env;
+pub use profile_env::{ProfileEnv, profile_env_modeled};
+
 #[cfg(test)]
 use profile::decode_override;
 
