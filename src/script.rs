@@ -15,6 +15,13 @@ pub struct Script {
     pub restored: bool,
 }
 
+fn identity(home: &Path, stamp: &str, out_dir: &Path) -> String {
+    let mut key = Key::new();
+    key.feed(stamp.as_bytes());
+    key.feed_str(&crate::inputs::portable(home, &out_dir.to_string_lossy()));
+    key.full_digest()
+}
+
 fn stamp_of(home: &Path, recorded: &str, out_dir: &Path) -> String {
     let mut key = Key::new();
     key.feed(recorded.as_bytes());
@@ -61,9 +68,9 @@ pub fn ensure(
             .unwrap_or_else(|_| stamp_of(&settings.home, &recorded, &out_dir));
         return Ok(Script {
             lease: action.lease()?,
+            stamp: identity(&settings.home, &stamp, &out_dir),
             out_dir,
             output: crate::inputs::concrete(&settings.home, &recorded),
-            stamp,
             restored: true,
         });
     }
@@ -79,9 +86,9 @@ pub fn ensure(
     record(&action, &job, &recorded, &stamp)?;
     Ok(Script {
         lease: action.lease()?,
+        stamp: identity(&settings.home, &stamp, &out_dir),
         out_dir,
         output,
-        stamp,
         restored: false,
     })
 }

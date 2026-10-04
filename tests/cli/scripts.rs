@@ -183,3 +183,36 @@ fn a_build_time_only_package_skips_bitcode_under_lto() {
     assert!(generator.contains("embed-bitcode=no"), "{generator}");
     assert!(!generator.contains("lto="), "{generator}");
 }
+
+#[test]
+fn script_runs_with_the_same_output_keep_their_own_library_units() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("gen");
+    write(
+        &root.join("Cargo.toml"),
+        "[package]\nname = \"gen\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    );
+    write(
+        &root.join("build.rs"),
+        "fn main() {\n    let out = std::env::var(\"OUT_DIR\").unwrap();\n    std::fs::write(format!(\"{out}/n.rs\"), \"pub const N: u8 = 1;\").unwrap();\n}\n",
+    );
+    write(
+        &root.join("src/lib.rs"),
+        "include!(concat!(env!(\"OUT_DIR\"), \"/n.rs\"));\n",
+    );
+    let home = tmp.path().join("home");
+    let build = |rustdoc: &str| {
+        let out = artificer(&home, &root)
+            .arg("build")
+            .env("RUSTDOC", rustdoc)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        assert!(out.status.success(), "{stderr}");
+        stderr
+    };
+    build("rustdoc-a");
+    build("rustdoc-b");
+    let again = build("rustdoc-a");
+    assert!(again.contains(" 0 rustc"), "{again}");
+}
