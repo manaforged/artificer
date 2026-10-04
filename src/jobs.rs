@@ -72,8 +72,13 @@ fn install_pool(home: &Path) -> Result<()> {
 }
 
 #[cfg(unix)]
+fn auth(fifo: &Path) -> String {
+    format!("--jobserver-auth=fifo:{}", fifo.display())
+}
+
+#[cfg(unix)]
 fn write_env(home: &Path, fifo: &Path) -> Result<()> {
-    let auth = format!("--jobserver-auth=fifo:{}", fifo.display());
+    let auth = auth(fifo);
     fs::write(
         home.join("jobserver.env"),
         format!("export MAKEFLAGS='{auth}'\nexport CARGO_MAKEFLAGS='{auth}'\n"),
@@ -156,6 +161,19 @@ pub(crate) fn fill(fifo: &Path, n: usize) -> Result<()> {
 pub fn isolate(cmd: &mut std::process::Command) {
     cmd.env_remove("MAKEFLAGS");
     cmd.env_remove("CARGO_MAKEFLAGS");
+}
+
+pub(crate) fn share(cmd: &mut std::process::Command, home: &Path) {
+    isolate(cmd);
+    #[cfg(unix)]
+    {
+        let fifo = fifo(home);
+        if fifo.exists() {
+            cmd.env("CARGO_MAKEFLAGS", auth(&fifo));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = home;
 }
 
 pub struct Permit {

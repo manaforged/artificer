@@ -99,7 +99,7 @@ fn probe_threads(dir: &Path) -> Vec<String> {
 }
 
 fn threads_n(cores: usize) -> usize {
-    (cores / 4).clamp(1, 4)
+    cores.clamp(1, 8)
 }
 
 fn rustc_lib(extra: &[String], toolchain_dir: &Path) -> bool {

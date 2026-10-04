@@ -97,3 +97,23 @@ fn the_threads_mode_reaches_rustc() {
         .unwrap_or_else(|| panic!("no rustc command for alpha: {stderr}"));
     assert!(alpha.contains("\"threads="), "{alpha}");
 }
+
+#[cfg(unix)]
+#[test]
+fn rustc_shares_the_job_token_pool() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("ws");
+    write_workspace(&root, &[("alpha", "pub fn value() -> u8 { 1 }\n")]);
+    let out = artificer(&tmp.path().join("home"), &root)
+        .env("ARTIFICER_TRACE", "1")
+        .arg("build")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    let alpha = stderr
+        .lines()
+        .find(|line| line.contains("\"--crate-name\" \"alpha\""))
+        .unwrap_or_else(|| panic!("no rustc command for alpha: {stderr}"));
+    assert!(alpha.contains("--jobserver-auth=fifo:"), "{alpha}");
+}

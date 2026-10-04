@@ -109,7 +109,7 @@ pub(crate) fn run_rustc(
     let _permit = crate::profile::span(crate::profile::UnitPhase::Permit, || {
         crate::jobs::acquire(&sess.settings.home)
     })?;
-    crate::jobs::isolate(cmd);
+    crate::jobs::share(cmd, &sess.settings.home);
     crate::profile::span(crate::profile::ProcessPhase::Rustc, || {
         run_rustc_inner(cmd, sess, pkg, target, out, early)
     })
