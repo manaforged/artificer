@@ -76,8 +76,10 @@ src/settings.rs resolves one profile into the exact rustc configuration.
 src/features.rs narrows the graph to the per-invocation feature set.
 src/session.rs carries the shared caches. src/schedule.rs compiles ready
 graph nodes concurrently. A library starts once its dependencies have
-written their metadata, as Cargo's pipelining does; a unit that links, or
-that runs a build script, waits for every dependency to finish.
+written their metadata, as Cargo's pipelining does; a unit that links
+waits for every dependency to finish. A package's build script is its own
+unit: it starts once its build-dependencies are built and the build
+scripts of its `links` dependencies have run.
 
 src/compile.rs builds rustc and rustdoc commands through src/invoke.rs.
 It stores dependency artifacts in the session so each downstream key

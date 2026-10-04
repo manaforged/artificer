@@ -26,6 +26,7 @@ pub struct Settings {
     pub env: Vec<(String, String)>,
     pub threads: Vec<String>,
     pub profile: Vec<String>,
+    pub build_profile: Vec<String>,
     pub overrides: Overrides,
     pub lto: bool,
     pub release: bool,
@@ -141,9 +142,13 @@ impl Settings {
             .then(|| self.profile_dir().join(crate::sweep::INCREMENTAL_DIR))
     }
 
-    pub(crate) fn profile_value<'a>(&'a self, pkg: &Package, key: &str) -> Option<&'a str> {
-        self.profile
-            .iter()
+    pub(crate) fn profile_value<'a>(
+        &'a self,
+        pkg: &Package,
+        base: &'a [String],
+        key: &str,
+    ) -> Option<&'a str> {
+        base.iter()
             .chain(
                 self.overrides
                     .for_package(&pkg.name, pkg.source.is_some())
@@ -188,7 +193,8 @@ impl Settings {
         let env = crate::config::effective_env(&cfg.env);
         let (codegen, linker, threads) =
             mod_flags(&mods, release, home, &rustc, dir, &target_flags.host_linker);
-        let profile = crate::manifest::profile(ws, name);
+        let profile = crate::manifest::profile(ws, name, crate::manifest::UnitUse::Runtime);
+        let build_profile = crate::manifest::profile(ws, name, crate::manifest::UnitUse::BuildOnly);
         let incremental = incremental(crate::manifest::profile_gate(ws, name).map_err(unmodeled)?);
         let lints = workspace_lints(packages)?;
         let overrides = crate::manifest::overrides(ws, name).map_err(unmodeled)?;
@@ -215,6 +221,7 @@ impl Settings {
             env,
             threads,
             profile,
+            build_profile,
             overrides,
             lto,
             release,

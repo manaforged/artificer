@@ -224,7 +224,7 @@ pub(crate) fn unit_digest(
             trace.push_str(&format!("clippy: {lint:?}\n"));
         }
         trace.push_str(&format!("rustflags: {:?}\n", sess.settings.rustflags));
-        trace.push_str(&format!("profile: {:?}\n", sess.settings.profile));
+        trace.push_str(&format!("profile: {:?}\n", sess.profile(pkg)));
         trace.push_str(&format!(
             "overrides: {:?}\n",
             sess.settings

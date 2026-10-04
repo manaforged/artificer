@@ -13,6 +13,7 @@ pub type CompiledTests = (HashMap<String, Compiled>, HashMap<String, Vec<TestBin
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Unit {
     Pkg(String),
+    Script(String),
     Extra(String),
 }
 
@@ -212,6 +213,7 @@ pub fn compile_ids(
     sess.learn_links(meta);
     let done = run_units(meta, plan, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id),
+        Unit::Script(id) => compile::run_script(sess, meta, id).map(|()| None),
         Unit::Extra(_) => unreachable!("no extras scheduled"),
     })?;
     let mut out = HashMap::new();
@@ -238,6 +240,7 @@ pub fn compile_ids_and_tests(
     }
     let done = run_units(meta, plan, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id).map(Done::Lib),
+        Unit::Script(id) => compile::run_script(sess, meta, id).map(|()| Done::Lib(None)),
         Unit::Extra(id) => compile::compile_tests(sess, meta, id, sel).map(Done::Tests),
     })?;
     let mut libs = HashMap::new();
@@ -247,7 +250,7 @@ pub fn compile_ids_and_tests(
             (Unit::Pkg(id), Done::Lib(Some(compiled))) => {
                 libs.insert(id, compiled);
             }
-            (Unit::Pkg(_), Done::Lib(None)) => {}
+            (Unit::Pkg(_) | Unit::Script(_), Done::Lib(None)) => {}
             (Unit::Extra(id), Done::Tests(bins)) => {
                 tests.insert(id, bins);
             }
@@ -268,6 +271,7 @@ pub fn compile_ids_and_extras(
     sess.learn_links(meta);
     let done = run_units(meta, plan, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id),
+        Unit::Script(id) => compile::run_script(sess, meta, id).map(|()| None),
         Unit::Extra(id) => compile::check_extras(sess, meta, id, sel).map(|()| None),
     })?;
     let mut out = HashMap::new();

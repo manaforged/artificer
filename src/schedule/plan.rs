@@ -26,8 +26,7 @@ pub(super) fn plan(
     let mut units = Vec::new();
     let mut deps = HashMap::new();
     for id in ids {
-        units.push(Unit::Pkg(id.clone()));
-        deps.insert(Unit::Pkg(id.clone()), pkg_deps(meta, id)?);
+        package_units(meta, id, &mut units, &mut deps)?;
     }
     for root in roots {
         units.push(Unit::Extra(root.clone()));
@@ -50,18 +49,56 @@ pub(super) fn plan(
 
 fn unit_links(sess: &Session, meta: &cargo::Metadata, unit: &Unit) -> bool {
     match unit {
-        Unit::Extra(_) => true,
+        Unit::Extra(_) | Unit::Script(_) => true,
         Unit::Pkg(id) => {
             cargo::package(meta, id).map_or(true, |pkg| crate::compile::waits_for_link(sess, pkg))
         }
     }
 }
 
-fn pkg_deps(meta: &cargo::Metadata, id: &str) -> Result<Vec<Unit>> {
-    Ok(cargo::compile_deps(meta, id)?
-        .into_iter()
-        .map(Unit::Pkg)
-        .collect())
+fn package_units(
+    meta: &cargo::Metadata,
+    id: &str,
+    units: &mut Vec<Unit>,
+    deps: &mut HashMap<Unit, Vec<Unit>>,
+) -> Result<()> {
+    let pkg = cargo::package(meta, id)?;
+    let node = cargo::node(meta, id)?;
+    let mut lib: Vec<Unit> = node
+        .deps
+        .iter()
+        .filter(|d| !d.is_dev() && d.usable_for_lib())
+        .map(|d| Unit::Pkg(d.pkg.clone()))
+        .collect();
+    if pkg.script_target().is_some() {
+        let script = Unit::Script(id.to_string());
+        deps.insert(script.clone(), script_deps(meta, node));
+        units.push(script.clone());
+        lib.push(script);
+    }
+    units.push(Unit::Pkg(id.to_string()));
+    deps.insert(Unit::Pkg(id.to_string()), lib);
+    Ok(())
+}
+
+fn script_deps(meta: &cargo::Metadata, node: &cargo::Node) -> Vec<Unit> {
+    let mut out: Vec<Unit> = node
+        .deps
+        .iter()
+        .filter(|d| !d.is_dev() && d.usable_for_script())
+        .map(|d| Unit::Pkg(d.pkg.clone()))
+        .collect();
+    out.extend(
+        node.deps
+            .iter()
+            .filter(|d| !d.is_dev() && (d.usable_for_lib() || d.usable_for_script()))
+            .filter(|d| {
+                cargo::package(meta, &d.pkg)
+                    .is_ok_and(|pkg| pkg.links.is_some() && pkg.script_target().is_some())
+            })
+            .map(|d| Unit::Script(d.pkg.clone())),
+    );
+    out
 }
 
 pub(super) fn waits(plan: &Plan) -> Waits {
@@ -176,6 +213,7 @@ pub(super) fn planned(
         .map(|unit| {
             let (id, role) = match unit {
                 Unit::Pkg(id) => (id, Role::Package),
+                Unit::Script(id) => (id, Role::Script),
                 Unit::Extra(id) => (id, Role::Targets),
             };
             let (name, version) = cargo::package(meta, id).map_or_else(

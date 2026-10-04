@@ -232,7 +232,7 @@ mod profile;
 pub use profile::{Overrides, overrides};
 
 mod profile_args;
-pub use profile_args::{profile, profile_gate};
+pub use profile_args::{UnitUse, profile, profile_gate};
 
 #[cfg(test)]
 use profile::decode_override;

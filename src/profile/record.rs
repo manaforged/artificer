@@ -298,7 +298,9 @@ fn open(phase: Phase) -> Option<(Arc<Recorder>, usize)> {
     let start_us = recorder.now();
     let index = {
         let mut state = recorder.lock();
-        if phase == Phase::Process(ProcessPhase::Rustc) && !in_script {
+        if phase == Phase::Process(ProcessPhase::ScriptRun)
+            || (phase == Phase::Process(ProcessPhase::Rustc) && !in_script)
+        {
             mark_miss(&mut state, unit);
         }
         state.spans.push(Span {

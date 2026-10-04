@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 const STAMP_FILE: &str = "stamp";
 
+#[derive(Clone)]
 pub struct Script {
     pub(crate) lease: std::sync::Arc<std::fs::File>,
     pub out_dir: PathBuf,
@@ -42,8 +43,8 @@ pub fn ensure(
         externs,
         search,
         dep_env,
-        opt_level: settings.profile_value(pkg, "opt-level").unwrap_or("0"),
-        debug: settings
+        opt_level: sess.profile_value(pkg, "opt-level").unwrap_or("0"),
+        debug: sess
             .profile_value(pkg, "debuginfo")
             .is_some_and(|v| v != "0" && v != "none"),
         source_key: &source_key,

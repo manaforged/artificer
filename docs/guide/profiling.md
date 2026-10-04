@@ -27,8 +27,9 @@ The report has these sections. Empty sections are left out.
   becoming ready and starting. A library is ready once its dependencies
   have written their metadata, so it can start while they still generate
   code; a unit that links, such as a binary or a test, is ready once its
-  dependencies finish. A long wait means the unit was ready but no worker
-  was free.
+  dependencies finish. A package with a build script has a separate
+  `(build script)` step, ready once its build-dependencies are built. A
+  long wait means the unit was ready but no worker was free.
 - **Where the time went.** Totals per phase, such as `rustc`, `key`, and
   `publish`. Artificer's own setup phases, such as `metadata` and
   `feature-probe`, are in a separate group.

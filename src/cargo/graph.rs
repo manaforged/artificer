@@ -35,6 +35,35 @@ pub fn must_link(meta: &Metadata, order: &[String]) -> std::collections::HashSet
     set
 }
 
+pub fn build_only(
+    meta: &Metadata,
+    roots: &[String],
+    order: &[String],
+    dev: bool,
+) -> std::collections::HashSet<String> {
+    let mut runtime: std::collections::HashSet<String> = roots.iter().cloned().collect();
+    let mut stack = roots.to_vec();
+    while let Some(id) = stack.pop() {
+        if package(meta, &id).is_ok_and(Package::is_proc_macro) {
+            continue;
+        }
+        let Ok(n) = node(meta, &id) else {
+            continue;
+        };
+        let tested = dev && roots.contains(&id);
+        for d in &n.deps {
+            let runs = d.usable_for_lib() || (tested && d.usable_for_dev());
+            if runs && runtime.insert(d.pkg.clone()) {
+                stack.push(d.pkg.clone());
+            }
+        }
+    }
+    must_link(meta, order)
+        .into_iter()
+        .filter(|id| !runtime.contains(id))
+        .collect()
+}
+
 impl Metadata {
     fn pkg_ix(&self) -> &HashMap<String, usize> {
         self.pkg_ix.get_or_init(|| {

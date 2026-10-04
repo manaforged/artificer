@@ -50,6 +50,7 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
     )?;
     sess.json = opts.json;
     sess.primary = roots.iter().cloned().collect();
+    sess.build_only = cargo::build_only(meta, roots, &order, true);
     if !opts.doc {
         sess.set_target_tmpdir(target_tmpdir(&sess.settings)?);
         sess.ship = roots.iter().cloned().collect();
@@ -303,7 +304,7 @@ pub(super) fn json_profile(root: &Path, name: &str, test: bool) -> serde_json::V
     let mut debuginfo = 0;
     let mut assertions = false;
     let mut overflow = false;
-    let args = manifest::profile(root, name);
+    let args = manifest::profile(root, name, manifest::UnitUse::Runtime);
     for pair in args.windows(2).filter(|pair| pair[0] == "-C") {
         let Some((key, value)) = pair[1].split_once('=') else {
             continue;

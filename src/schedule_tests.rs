@@ -104,3 +104,28 @@ fn a_linking_unit_waits_for_every_transitive_dependency() {
     state.done.insert(pkg("a"));
     assert_eq!(state.pick(), Some(pkg("bin")));
 }
+
+fn script(id: &str) -> Unit {
+    Unit::Script(id.to_string())
+}
+
+#[test]
+fn a_build_script_starts_while_the_package_dependencies_compile() {
+    let ids = vec![pkg("slow"), pkg("tool"), script("p"), pkg("p")];
+    let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
+    deps.insert(script("p"), vec![pkg("tool")]);
+    deps.insert(pkg("p"), vec![pkg("slow"), script("p")]);
+    let mut state = ready(&ids, &deps, &[script("p")]);
+    let first = [state.pick(), state.pick()];
+    assert!(first.contains(&Some(pkg("slow"))) && first.contains(&Some(pkg("tool"))));
+    assert!(
+        state.pick().is_none(),
+        "the script needs its build dependency"
+    );
+    state.done.insert(pkg("tool"));
+    assert_eq!(state.pick(), Some(script("p")), "slow is still compiling");
+    assert!(state.pick().is_none(), "the package needs its script");
+    state.done.insert(script("p"));
+    state.meta.insert(pkg("slow"));
+    assert_eq!(state.pick(), Some(pkg("p")));
+}

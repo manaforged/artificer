@@ -9,10 +9,23 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- A package used only at build time, by a build script or a proc macro,
+  compiles with Cargo's `build-override` defaults: no debug info, no
+  optimization, no embedded bitcode, and unwinding panics. Its build script
+  sees the matching `OPT_LEVEL` and `DEBUG`. Artificer had compiled it with
+  the full profile, which spent more time on `syn` and similar crates, and
+  on `opt-level = 3` in release builds. Build scripts compile without
+  embedded bitcode, as with Cargo.
+- In a workspace with `default-members`, a command without `-p` or
+  `--workspace` builds only the default members, as Cargo does. Artificer
+  built every member.
+- A build script runs as its own unit, as with Cargo: it starts once its
+  build-dependencies are built, while the package's other dependencies
+  still compile. Profiles show it as a `(build script)` unit.
 - A library starts compiling once its dependencies have written their
-  metadata, as with Cargo's pipelining; binaries, tests, proc macros, and
-  packages with build scripts still wait for every dependency to finish.
-  Build profiles record each unit's metadata time.
+  metadata, as with Cargo's pipelining; binaries, tests, and proc macros
+  still wait for every dependency to finish. Build profiles record each
+  unit's metadata time.
 - Artificer raises its open-file limit at startup, as Cargo does. A cold
   build of a large workspace on macOS stopped with "Too many open files".
 - A test target with `harness = false` runs its own `main` again. Artificer

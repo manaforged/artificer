@@ -79,3 +79,107 @@ fn a_file_included_from_outside_the_package_still_reruns_the_script() {
         assert_eq!(run(&home, &root), word);
     }
 }
+
+fn build_time_workspace(ws: &Path) {
+    write(
+        &ws.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"app\", \"gen\"]\nresolver = \"2\"\n",
+    );
+    write(
+        &ws.join("gen/Cargo.toml"),
+        "[package]\nname = \"gen\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    );
+    write(
+        &ws.join("gen/build.rs"),
+        "fn main() {\n    let opt = std::env::var(\"OPT_LEVEL\").unwrap();\n    let debug = std::env::var(\"DEBUG\").unwrap();\n    println!(\"cargo:rustc-env=GEN_PROFILE={opt}-{debug}\");\n}\n",
+    );
+    write(
+        &ws.join("gen/src/lib.rs"),
+        "pub const PROFILE: &str = env!(\"GEN_PROFILE\");\n",
+    );
+    write(
+        &ws.join("app/Cargo.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[build-dependencies]\ngen = { path = \"../gen\" }\n",
+    );
+    write(
+        &ws.join("app/build.rs"),
+        "fn main() {\n    println!(\"cargo:rustc-env=APP_GEN={}\", gen::PROFILE);\n}\n",
+    );
+    write(
+        &ws.join("app/src/main.rs"),
+        "fn main() {\n    println!(\"{}\", env!(\"APP_GEN\"));\n}\n",
+    );
+}
+
+#[test]
+fn a_build_time_only_package_uses_the_build_override_defaults() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("ws");
+    build_time_workspace(&ws);
+    let home = tmp.path().join("home");
+    for args in [
+        &["run", "-q", "-p", "app"][..],
+        &["run", "-q", "-p", "app", "--release"][..],
+    ] {
+        let cargo = stock(&ws)
+            .args(args)
+            .env("CARGO_TARGET_DIR", tmp.path().join("stock"))
+            .output()
+            .unwrap();
+        let ours = artificer(&home, &ws).args(args).output().unwrap();
+        assert!(
+            ours.status.success(),
+            "{}",
+            String::from_utf8_lossy(&ours.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&ours.stdout),
+            String::from_utf8_lossy(&cargo.stdout),
+            "{args:?}"
+        );
+    }
+    let traced = artificer(&tmp.path().join("traced"), &ws)
+        .env("ARTIFICER_TRACE", "1")
+        .args(["build", "-p", "app"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&traced.stderr);
+    let command = |name: &str| {
+        stderr
+            .lines()
+            .find(|line| line.contains(&format!("\"--crate-name\" \"{name}\"")))
+            .unwrap_or_else(|| panic!("no rustc command for {name}: {stderr}"))
+            .to_string()
+    };
+    assert!(command("gen").contains("debuginfo=0"), "{}", command("gen"));
+    assert!(command("app").contains("debuginfo=2"), "{}", command("app"));
+    let script = command("build_script_build");
+    assert!(script.contains("embed-bitcode=no"), "{script}");
+}
+
+#[test]
+fn a_build_time_only_package_skips_bitcode_under_lto() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("ws");
+    build_time_workspace(&ws);
+    let manifest = ws.join("Cargo.toml");
+    let text = fs::read_to_string(&manifest).unwrap();
+    fs::write(
+        &manifest,
+        format!("{text}\n[profile.release]\nlto = true\n"),
+    )
+    .unwrap();
+    let traced = artificer(&tmp.path().join("home"), &ws)
+        .env("ARTIFICER_TRACE", "1")
+        .args(["build", "-p", "app", "--release"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&traced.stderr);
+    assert!(traced.status.success(), "{stderr}");
+    let generator = stderr
+        .lines()
+        .find(|line| line.contains("\"--crate-name\" \"gen\""))
+        .unwrap_or_else(|| panic!("no rustc command for gen: {stderr}"));
+    assert!(generator.contains("embed-bitcode=no"), "{generator}");
+    assert!(!generator.contains("lto="), "{generator}");
+}

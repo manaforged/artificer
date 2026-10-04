@@ -11,6 +11,7 @@ pub(crate) fn ms(us: u64) -> u64 {
 pub(crate) fn label(name: &str, version: &str, role: Role) -> String {
     match role {
         Role::Package => format!("{name} {version}"),
+        Role::Script => format!("{name} {version} (build script)"),
         Role::Targets => format!("{name} {version} (targets)"),
     }
 }
@@ -37,6 +38,7 @@ impl Outcome {
 #[serde(rename_all = "kebab-case")]
 pub enum Role {
     Package,
+    Script,
     Targets,
 }
 

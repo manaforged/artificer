@@ -32,6 +32,8 @@ pub struct Metadata {
     pub resolve: Option<Resolve>,
     #[serde(default)]
     pub workspace_members: Vec<String>,
+    #[serde(default)]
+    pub workspace_default_members: Option<Vec<String>>,
     #[serde(skip)]
     pub(crate) pkg_ix: OnceLock<HashMap<String, usize>>,
     #[serde(skip)]
@@ -366,8 +368,8 @@ mod graph;
 #[cfg(all(test, unix))]
 use graph::same_package_id;
 pub use graph::{
-    closure_many, compile_deps, find_manifest, host_id, id_by_name, must_link, node, package,
-    root_id, test_closure_many, test_compile_deps,
+    build_only, closure_many, compile_deps, find_manifest, host_id, id_by_name, must_link, node,
+    package, root_id, test_closure_many, test_compile_deps,
 };
 
 mod metadata;

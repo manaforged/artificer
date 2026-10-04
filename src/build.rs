@@ -156,6 +156,13 @@ pub(crate) fn check_roots(
     if workspace {
         return Ok(meta.workspace_members.clone());
     }
+    if let Some(defaults) = meta
+        .workspace_default_members
+        .as_ref()
+        .filter(|ids| !ids.is_empty())
+    {
+        return Ok(defaults.clone());
+    }
     match cargo::root_id(meta, dir) {
         Ok(id) => Ok(vec![id]),
         Err(_) if !meta.workspace_members.is_empty() => Ok(meta.workspace_members.clone()),
@@ -253,6 +260,7 @@ fn check_graph(
     };
     let mut sess = check_session(home, &plan, meta_only, opts, sel)?;
     sess.must_link = cargo::must_link(&plan.meta, &order);
+    sess.build_only = cargo::build_only(&plan.meta, &plan.roots, &order, dev);
     let compiled = check_units(&sess, &plan, &order, meta_only, sel)?;
     let ws = cargo::root(&plan.meta, &plan.pkg_dir);
     finished(ws, profile_name(opts.release, "dev"), started);

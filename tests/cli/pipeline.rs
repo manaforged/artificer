@@ -106,3 +106,52 @@ fn a_library_compiles_while_its_dependency_is_still_in_codegen() {
         "app linked before its dependencies finished: {profile}"
     );
 }
+
+fn unit_role<'v>(profile: &'v Value, name: &str, role: &str) -> &'v Value {
+    profile["top_units"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|unit| unit["name"] == name && unit["role"] == role)
+        .unwrap_or_else(|| panic!("no {role} unit {name} in {profile}"))
+}
+
+#[test]
+fn a_build_script_runs_while_the_package_dependencies_still_compile() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("ws");
+    write(
+        &root.join("Cargo.toml"),
+        "[workspace]\nresolver = \"2\"\nmembers = [\"heavy\", \"scripted\"]\n\n[profile.dev]\nopt-level = 3\n",
+    );
+    member(&root, "heavy", "", "lib.rs", &heavy_source());
+    member(
+        &root,
+        "scripted",
+        "heavy = { path = \"../heavy\" }\n",
+        "lib.rs",
+        "pub fn value() -> u64 {\n    env!(\"SCRIPTED\").len() as u64 + heavy::BASE\n}\n",
+    );
+    write(
+        &root.join("scripted/build.rs"),
+        "fn main() {\n    println!(\"cargo:rustc-env=SCRIPTED=yes\");\n}\n",
+    );
+    let home = tmp.path().join("home");
+    let out = artificer(&home, &root).arg("build").output().unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let profile = artificer(&home, &root)
+        .args(["profile", "--json"])
+        .output()
+        .unwrap();
+    let profile: Value = serde_json::from_slice(&profile.stdout).unwrap();
+    let heavy = unit_role(&profile, "heavy", "package");
+    let script = unit_role(&profile, "scripted", "script");
+    assert!(
+        ms(script, "start_ms") < ms(heavy, "end_ms"),
+        "the build script waited for heavy: {profile}"
+    );
+}

@@ -1,7 +1,7 @@
 use super::{Key, clippy, compile_env, from_registry};
 use crate::cargo::{self, Package};
 use crate::session::Session;
-use crate::{invoke, key, settings};
+use crate::{invoke, key};
 
 #[derive(Clone, Copy)]
 pub(super) enum Feed<'a> {
@@ -45,7 +45,7 @@ pub(super) fn feed_inputs(
         key.feed(b"script-pending");
     }
     key.feed_list(&sess.settings.rustflags);
-    key.feed_list(settings::profile_for(&sess.settings.profile, takes_lto));
+    key.feed_list(sess.profile_args(pkg, takes_lto));
     key.feed_list(
         sess.settings
             .overrides

@@ -181,7 +181,7 @@ once), `busy_ms` (integer, process time summed over all processes), and
 `idle_core_ms` (integer, job slots left unused in that interval).
 
 A unit object has `unit` (integer index), `name`, `version`, `role`
-(`package` or `targets`), `outcome` (`hit`, `miss`, `failed`, or null),
+(`package`, `script` for a package's build script, or `targets`), `outcome` (`hit`, `miss`, `failed`, or null),
 `start_ms`, `end_ms`, `duration_ms`, `wait_ms` (time between the unit
 becoming ready and starting: a library is ready when its dependencies'
 metadata is written, a unit that links when its dependencies finish),

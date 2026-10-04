@@ -2,29 +2,23 @@ use crate::cargo::{self, Package};
 use crate::platform::env_path;
 use crate::script::{self, Script};
 use crate::session::{Artifact, Session};
-use crate::settings::{Settings, profile_for};
 use anyhow::{Context, Result, bail};
 use serde_json::{Map, Value};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub(crate) fn style(
-    settings: &Settings,
-    cmd: &mut Command,
-    link: bool,
-    pkg: &Package,
-    lto_ok: bool,
-) {
+pub(crate) fn style(sess: &Session, cmd: &mut Command, link: bool, pkg: &Package, lto_ok: bool) {
+    let settings = &sess.settings;
     cmd.env_remove("RUSTFLAGS");
     cmd.env_remove("CARGO_ENCODED_RUSTFLAGS");
     if settings.mods.slim {
         cmd.arg("-C").arg("debuginfo=line-tables-only");
     }
-    if !settings.lto {
+    if !settings.lto || sess.build_only.contains(&pkg.id) {
         cmd.arg("-C").arg("embed-bitcode=no");
     }
-    for a in profile_for(&settings.profile, lto_ok) {
+    for a in sess.profile_args(pkg, lto_ok) {
         cmd.arg(a);
     }
     for a in settings
@@ -83,7 +77,7 @@ pub(crate) fn rustc_base(
 ) -> Command {
     let crate_name = target.name.replace('-', "_");
     cmd.args(["--crate-name", &crate_name, "--edition", &target.edition]);
-    style(&sess.settings, &mut cmd, link, pkg, lto_ok);
+    style(sess, &mut cmd, link, pkg, lto_ok);
     for a in &sess.settings.codegen {
         cmd.arg(a);
     }

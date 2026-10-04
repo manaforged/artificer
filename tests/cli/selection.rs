@@ -263,3 +263,51 @@ fn colored_cargo_output_does_not_disable_caching() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+#[test]
+fn a_workspace_build_selects_default_members() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("ws");
+    for (name, source) in [
+        ("kept", "pub fn kept() {}\n"),
+        (
+            "skipped",
+            "compile_error!(\"built a non-default member\");\n",
+        ),
+    ] {
+        fs::create_dir_all(ws.join(name).join("src")).unwrap();
+        fs::write(
+            ws.join(name).join("Cargo.toml"),
+            format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
+        )
+        .unwrap();
+        fs::write(ws.join(name).join("src/lib.rs"), source).unwrap();
+    }
+    fs::write(
+        ws.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"kept\", \"skipped\"]\ndefault-members = [\"kept\"]\nresolver = \"2\"\n",
+    )
+    .unwrap();
+    let home = tmp.path().join("home");
+    let out = artificer(&home, &ws).arg("build").output().unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stat = artificer(&home, &ws)
+        .args(["stat", "--json"])
+        .output()
+        .unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&stat.stdout).expect("stat JSON");
+    assert_eq!(value["builds"], 1, "{value}");
+    let all = artificer(&home, &ws)
+        .args(["build", "--workspace"])
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&all.stderr).contains("built a non-default member"),
+        "{}",
+        String::from_utf8_lossy(&all.stderr)
+    );
+}

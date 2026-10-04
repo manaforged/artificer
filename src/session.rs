@@ -25,10 +25,12 @@ pub struct Session {
     artifact_hashes: Mutex<HashMap<PathBuf, String>>,
     env_names: Mutex<HashMap<String, Arc<Vec<String>>>>,
     pub(crate) published: Mutex<HashMap<String, Vec<(String, String)>>>,
+    pub(crate) scripts: Mutex<HashMap<String, crate::script::Script>>,
     pub json: bool,
     pub(crate) target_tmpdir: Option<PathBuf>,
     pub meta_only: bool,
     pub must_link: HashSet<String>,
+    pub(crate) build_only: HashSet<String>,
     pub ship: HashSet<String>,
     pub(crate) select: Option<crate::build::TargetSel>,
     pub primary: HashSet<String>,
@@ -52,6 +54,22 @@ pub(crate) fn package_label(pkg: &Package) -> String {
 }
 
 impl Session {
+    pub(crate) fn profile(&self, pkg: &Package) -> &[String] {
+        if self.build_only.contains(&pkg.id) {
+            &self.settings.build_profile
+        } else {
+            &self.settings.profile
+        }
+    }
+
+    pub(crate) fn profile_args(&self, pkg: &Package, takes_lto: bool) -> Vec<String> {
+        crate::settings::profile_for(self.profile(pkg), takes_lto)
+    }
+
+    pub(crate) fn profile_value(&self, pkg: &Package, key: &str) -> Option<&str> {
+        self.settings.profile_value(pkg, self.profile(pkg), key)
+    }
+
     pub fn with_profile(
         home: &Path,
         dir: &Path,
@@ -71,10 +89,12 @@ impl Session {
             artifact_hashes: Mutex::new(HashMap::new()),
             env_names: Mutex::new(HashMap::new()),
             published: Mutex::new(HashMap::new()),
+            scripts: Mutex::new(HashMap::new()),
             json: false,
             target_tmpdir: None,
             meta_only: false,
             must_link: HashSet::new(),
+            build_only: HashSet::new(),
             ship: HashSet::new(),
             select: None,
             primary: HashSet::new(),

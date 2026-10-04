@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const BIN_CRATE: &str = "build_script_build";
-const BIN_KEY_TAG: &[u8] = b"build-script-bin-v1";
+const BIN_KEY_TAG: &[u8] = b"build-script-bin-v2";
 const RUN_KEY_TAG: &[u8] = b"build-script-env-v9";
 
 pub(super) struct Job<'a> {
@@ -135,6 +135,7 @@ impl Job<'_> {
         ]);
         cmd.arg(bin_dir);
         cmd.arg("--emit=dep-info,link");
+        cmd.args(["-C", "embed-bitcode=no"]);
         cmd.args(&settings.rustflags);
         cmd.args(&settings.host_linker);
         cmd.env("CARGO_CRATE_NAME", BIN_CRATE);

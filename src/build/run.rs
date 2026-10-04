@@ -72,6 +72,7 @@ fn run_example(
         opts.target_dir.as_deref(),
     )?;
     sess.primary = roots.iter().cloned().collect();
+    sess.build_only = cargo::build_only(meta, roots, &order, true);
     let compiled = schedule::compile_ids(&sess, meta, &order)?;
     record_stats(home, &compiled, started, "run");
     let exe = compile::compile_example(&sess, meta, &root, name)?;

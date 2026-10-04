@@ -32,8 +32,13 @@ pub struct Compiled {
 }
 
 pub(crate) fn waits_for_link(sess: &Session, pkg: &Package) -> bool {
-    pkg.script_target().is_some()
-        || package::PackageUnit::new(sess, pkg).is_none_or(|unit| !unit.pipelines())
+    package::PackageUnit::new(sess, pkg).is_none_or(|unit| !unit.pipelines())
+}
+
+pub fn run_script(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<()> {
+    let pkg = cargo::package(meta, id)?;
+    let node = cargo::node(meta, id)?;
+    ensure_script(sess, pkg, node).map(drop)
 }
 
 fn script_outcome(script: Option<&Script>) -> ScriptOutcome {
@@ -106,6 +111,24 @@ fn ensure_script(sess: &Session, pkg: &Package, node: &cargo::Node) -> Result<Op
     if pkg.script_target().is_none() {
         return Ok(None);
     }
+    let cached = sess
+        .scripts
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&pkg.id)
+        .cloned();
+    if let Some(script) = cached {
+        return Ok(Some(script));
+    }
+    let script = run_script_now(sess, pkg, node)?;
+    sess.scripts
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(pkg.id.clone(), script.clone());
+    Ok(Some(script))
+}
+
+fn run_script_now(sess: &Session, pkg: &Package, node: &cargo::Node) -> Result<Script> {
     crate::profile::span(crate::profile::WrapperPhase::Script, || {
         let script = script::ensure(
             pkg,
@@ -136,7 +159,7 @@ fn ensure_script(sess: &Session, pkg: &Package, node: &cargo::Node) -> Result<Op
             .lock()
             .expect("natives")
             .insert(pkg.id.clone(), script.output.clone());
-        Ok(Some(script))
+        Ok(script)
     })
 }
 
