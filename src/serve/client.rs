@@ -106,15 +106,7 @@ pub fn spawn(home: &Path) -> Result<()> {
     }
     secure_home(home)?;
     let log = secure_file(&home.join("serve.log"))?;
-    let mut exe = std::env::current_exe().context("current_exe")?;
-    if exe
-        .file_stem()
-        .is_some_and(|name| name.eq_ignore_ascii_case("cargo"))
-    {
-        exe = crate::cargo::cargo_home()
-            .join("bin")
-            .join(format!("artificer{}", std::env::consts::EXE_SUFFIX));
-    }
+    let exe = crate::install::self_launcher().context("current_exe")?;
     start(&exe, home, log).context("spawn artificer serve")?;
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(2) {

@@ -19,7 +19,8 @@ The store uses local files; the optional daemon listens only on loopback.
    Cargo and how you see it.
 3. [Cache model](cache-model.md): what a unit key covers, where the store
    lives, and how eviction works.
-4. [CI](ci.md): move the store between runs with `export` and `import`.
+4. [CI](ci.md): move the store between runs with `export` and `import`,
+   and between machines with `pull`.
 5. [Measurements](measurements.md): the timed cases and how to reproduce
    them.
 6. [Reference](reference.md): every command, supported option, compile

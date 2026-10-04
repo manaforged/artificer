@@ -30,10 +30,14 @@ real Cargo. Named `artificer`, it accepts the commands below.
 | `artificer why-fallback [--limit N]` | Show fallback reasons, most frequent first; `N` defaults to 5 |
 | `artificer env` | Print the command that puts the shim first on PATH |
 | `artificer enable`, `artificer disable` | Persistently enable caching or send shim commands directly to Cargo for the selected store |
-| `artificer install` | Place the launchers, the recorded Cargo path, and the PATH file |
+| `artificer install [--remote LOCATION]` | Place the launchers, the recorded Cargo path, and the PATH file; `--remote` also sets the remote store and starts the first pull in the background |
 | `artificer uninstall` | Remove the launchers and profile PATH lines; keep the cache unless `--purge` |
 | `artificer export DIR [--days N] [--max-gb N]` | Copy recently used units to a directory |
 | `artificer import DIR` | Add missing units from an exported directory |
+| `artificer remote` | Show the remote store |
+| `artificer remote set LOCATION` | Set the remote store: `HOST:/ABSOLUTE/PATH` over SSH, or an absolute directory |
+| `artificer remote off` | Clear the remote store |
+| `artificer pull` | Add missing complete units from the remote store |
 | `artificer mods` | List compile modes |
 | `artificer mods on NAME`, `artificer mods off NAME` | Change one compile mode |
 | `artificer --help`, `-h` | Print the command list |
@@ -136,6 +140,8 @@ ending with a `build-finished` message.
 - `ARTIFICER_STORE_CAP_GB` sets the store cap in GiB. It must be an
   integer; any other value is an error. The default is 15% of the volume,
   with a minimum of 8 GiB. Larger configured values are clamped to that limit.
+- `ARTIFICER_REMOTE` overrides the configured remote store. An empty value
+  turns the remote off.
 - `ARTIFICER_NO_TREE` skips the feature probe, so every handled command
   runs real Cargo.
 - Compile modes live in `ARTIFICER_HOME/mods.toml`. Change them with

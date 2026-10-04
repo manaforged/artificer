@@ -76,7 +76,7 @@ pub(super) fn input_stamp(
     }
     for (root, hit) in roots.iter().zip(found) {
         if hit {
-            key.feed_str(&root.display().to_string());
+            key.feed_str(&crate::inputs::portable(home, &root.display().to_string()));
         }
     }
     for line in output.lines() {
@@ -100,6 +100,16 @@ pub(super) fn input_stamp(
     key.full_digest()
 }
 
+const BUILD_PRODUCTS: [&str; 10] = [
+    "o", "obj", "a", "lib", "d", "rlib", "rmeta", "so", "dylib", "dll",
+];
+
+fn build_product(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| BUILD_PRODUCTS.contains(&ext))
+}
+
 fn mentions(dir: &Path, needles: &[(usize, memchr::memmem::Finder<'_>)], hits: &mut [bool]) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -111,7 +121,7 @@ fn mentions(dir: &Path, needles: &[(usize, memchr::memmem::Finder<'_>)], hits: &
         let path = entry.path();
         match entry.file_type() {
             Ok(kind) if kind.is_dir() => mentions(&path, needles, hits),
-            Ok(kind) if kind.is_file() => {
+            Ok(kind) if kind.is_file() && !build_product(&path) => {
                 if let Ok(bytes) = fs::read(&path) {
                     for ((_, finder), hit) in needles.iter().zip(hits.iter_mut()) {
                         *hit = *hit || finder.find(&bytes).is_some();

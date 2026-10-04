@@ -15,6 +15,8 @@
 | [`TransferReport`](#transferreport) | struct |  |
 | [`Unmodeled`](#unmodeled) | struct |  |
 | [`ColorChoice`](#colorchoice) | enum |  |
+| [`Location`](#location) | enum |  |
+| [`RemoteSource`](#remotesource) | enum |  |
 | [`RustcOutcome`](#rustcoutcome) | enum |  |
 | [`ScriptOutcome`](#scriptoutcome) | enum |  |
 | [`add_to_profiles`](#add_to_profiles) | fn |  |
@@ -42,9 +44,11 @@
 | [`path_remove`](#path_remove) | fn |  |
 | [`profile_line`](#profile_line) | fn |  |
 | [`profiles`](#profiles) | fn |  |
+| [`pull`](#pull) | fn |  |
 | [`purge`](#purge) | fn |  |
 | [`ready`](#ready) | fn |  |
 | [`refresh_shim`](#refresh_shim) | fn |  |
+| [`remote`](#remote) | fn |  |
 | [`remove_from_profiles`](#remove_from_profiles) | fn |  |
 | [`report_error`](#report_error) | fn |  |
 | [`run_cmd`](#run_cmd) | fn |  |
@@ -56,7 +60,9 @@
 | [`set_color`](#set_color) | fn |  |
 | [`set_jobs`](#set_jobs) | fn |  |
 | [`set_quiet`](#set_quiet) | fn |  |
+| [`set_remote`](#set_remote) | fn |  |
 | [`set_trace`](#set_trace) | fn |  |
+| [`spawn_pull`](#spawn_pull) | fn |  |
 | [`stock_cargo`](#stock_cargo) | fn |  |
 | [`store_stat`](#store_stat) | fn |  |
 | [`sweep_dir`](#sweep_dir) | fn |  |
@@ -65,6 +71,8 @@
 | [`uninstall`](#uninstall) | fn |  |
 | [`why_miss`](#why_miss) | fn |  |
 | [`LAYOUT`](#layout) | const |  |
+| [`PULL_EVERY`](#pull_every) | const |  |
+| [`REMOTE_ENV`](#remote_env) | const |  |
 
 ## Structs
 
@@ -282,6 +290,43 @@
 **Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Debug</code>, <code>Copy</code>, <code>StructuralPartialEq</code>
 
 
+### `Location`
+
+**Methods**
+
+| Method | Description |
+| --- | --- |
+| <code>parse(raw: &amp;str) -&gt; Result&lt;Self&gt;</code> |  |
+
+**Fields**
+
+| Field | Description |
+| --- | --- |
+| <code>Ssh::host: String</code> |  |
+| <code>Ssh::path: String</code> |  |
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>Dir(PathBuf)</code> |  |
+| <code>Ssh</code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Debug</code>, <code>Display</code>, <code>StructuralPartialEq</code>
+
+
+### `RemoteSource`
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>Config</code> |  |
+| <code>Env</code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Debug</code>, <code>Copy</code>, <code>StructuralPartialEq</code>
+
+
 ### `RustcOutcome`
 
 **Variants**
@@ -434,6 +479,11 @@
 <pre>pub fn <a href="#profiles">profiles</a>(home: &amp;Path, shell: Option&lt;&amp;Path&gt;, zdotdir: Option&lt;&amp;Path&gt;) -&gt; Vec&lt;PathBuf&gt;</pre>
 
 
+### `pull`
+
+<pre>pub fn <a href="#pull">pull</a>(home: &amp;Path) -&gt; Result&lt;(<a href="#location">Location</a>, <a href="#transferreport">TransferReport</a>)&gt;</pre>
+
+
 ### `purge`
 
 <pre>pub fn <a href="#purge">purge</a>(home: &amp;Path) -&gt; Result&lt;bool&gt;</pre>
@@ -447,6 +497,11 @@
 ### `refresh_shim`
 
 <pre>pub fn <a href="#refresh_shim">refresh_shim</a>(running: &amp;Path, control: &amp;Path, cargo_home: &amp;Path) -&gt; Result&lt;bool&gt;</pre>
+
+
+### `remote`
+
+<pre>pub fn <a href="#remote">remote</a>(home: &amp;Path) -&gt; Result&lt;Option&lt;(<a href="#location">Location</a>, <a href="#remotesource">RemoteSource</a>)&gt;&gt;</pre>
 
 
 ### `remove_from_profiles`
@@ -504,9 +559,19 @@
 <pre>pub fn <a href="#set_quiet">set_quiet</a>(on: bool)</pre>
 
 
+### `set_remote`
+
+<pre>pub fn <a href="#set_remote">set_remote</a>(home: &amp;Path, location: Option&lt;&amp;<a href="#location">Location</a>&gt;) -&gt; Result&lt;()&gt;</pre>
+
+
 ### `set_trace`
 
 <pre>pub fn <a href="#set_trace">set_trace</a>(on: bool)</pre>
+
+
+### `spawn_pull`
+
+<pre>pub fn <a href="#spawn_pull">spawn_pull</a>(home: &amp;Path) -&gt; Result&lt;()&gt;</pre>
 
 
 ### `stock_cargo`
@@ -549,6 +614,16 @@
 ### `LAYOUT`
 
 <pre>pub const <a href="#layout">LAYOUT</a>: &amp;str</pre>
+
+
+### `PULL_EVERY`
+
+<pre>pub const <a href="#pull_every">PULL_EVERY</a>: Duration</pre>
+
+
+### `REMOTE_ENV`
+
+<pre>pub const <a href="#remote_env">REMOTE_ENV</a>: &amp;str</pre>
 
 
 ---

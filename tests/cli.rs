@@ -164,3 +164,6 @@ mod edit_loop;
 
 #[path = "cli/sharing.rs"]
 mod sharing;
+
+#[path = "cli/remote.rs"]
+mod remote;

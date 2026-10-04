@@ -139,6 +139,7 @@ pub fn fallback_report(home: &Path, limit: usize) -> String {
 
 pub(crate) fn gc_daily(home: &Path) {
     static STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    crate::remote::pull_due(home);
     let full = stale(&home.join("gc.stamp"), GC_EVERY);
     if !full && !stale(&home.join("cap.stamp"), GC_CAP_EVERY) {
         return;
@@ -154,7 +155,7 @@ pub(crate) fn gc_daily(home: &Path) {
     });
 }
 
-fn stale(stamp: &Path, every: Duration) -> bool {
+pub(crate) fn stale(stamp: &Path, every: Duration) -> bool {
     !std::fs::metadata(stamp)
         .and_then(|m| m.modified())
         .ok()

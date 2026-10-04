@@ -194,6 +194,8 @@ fn store_tool(sub: help::Sub, rest: &[String]) -> Result<ExitCode> {
         Sub::Export => export_cmd(rest),
         Sub::Import => import_cmd(rest),
         Sub::WhyMiss => why_miss_cmd(rest),
+        Sub::Remote => remote::remote_cmd(rest),
+        Sub::Pull => remote::pull_cmd(rest),
         _ => why_fallback_cmd(rest),
     }
 }
@@ -380,6 +382,8 @@ mod commands;
 use clean::clean;
 #[path = "main/help.rs"]
 mod help;
+#[path = "main/remote.rs"]
+mod remote;
 use commands::{
     enable_cmd, export_cmd, import_cmd, install_cmd, mods_cmd, serve_cmd, stat_cmd, uninstall_cmd,
     why_fallback_cmd, why_miss_cmd,

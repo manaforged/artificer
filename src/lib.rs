@@ -24,6 +24,7 @@ mod manifest;
 mod mods;
 mod out;
 mod platform;
+mod remote;
 mod schedule;
 mod script;
 mod serve;
@@ -58,6 +59,10 @@ pub use keylog::why_miss;
 pub use maintenance::{StoreStat, doctor, fallback_report, store_stat, sweep_dir};
 pub use mods::{Mods, enabled, load as load_mods, save as save_mods};
 pub use out::{ColorChoice, Reported, error as report_error, set_color, set_quiet, set_trace};
+pub use remote::{
+    Location, PULL_EVERY, REMOTE_ENV, Source as RemoteSource, configured as remote, pull,
+    set as set_remote, spawn_pull,
+};
 pub use schedule::set_jobs;
 pub use serve::{
     Request as ServeRequest, listen as serve_listen, ping as serve_ping, stop as serve_stop,

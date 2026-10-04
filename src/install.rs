@@ -14,6 +14,21 @@ fn exe(name: &str) -> String {
     format!("{name}{}", std::env::consts::EXE_SUFFIX)
 }
 
+pub(crate) fn launcher(cargo_home: &Path) -> PathBuf {
+    cargo_home.join("bin").join(exe("artificer"))
+}
+
+pub(crate) fn self_launcher() -> anyhow::Result<PathBuf> {
+    let exe = std::env::current_exe()?;
+    if exe
+        .file_stem()
+        .is_some_and(|name| name.eq_ignore_ascii_case("cargo"))
+    {
+        return Ok(launcher(&crate::cargo::cargo_home()));
+    }
+    Ok(exe)
+}
+
 pub(crate) fn env_file(control: &Path) -> PathBuf {
     #[cfg(unix)]
     {
@@ -47,7 +62,7 @@ pub fn install(
     control: &Path,
 ) -> Result<InstallReport> {
     let shim_dir = control.join("bin");
-    let binary_dst = cargo_home.join("bin").join(exe("artificer"));
+    let binary_dst = launcher(cargo_home);
     let shim_dst = shim_dir.join(exe("cargo"));
     check_real_cargo(real_cargo, control)?;
     fs::create_dir_all(cargo_home.join("bin"))

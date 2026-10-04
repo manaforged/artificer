@@ -97,12 +97,8 @@ pub(super) fn enable_cmd(enabled: bool) -> Result<ExitCode> {
 }
 
 pub(super) fn install_cmd(args: &[String]) -> Result<ExitCode> {
-    let modify_path = match args {
-        [] => true,
-        [flag] if flag == "--no-modify-path" => false,
-        _ => {
-            return Ok(help::usage(help::Sub::Install));
-        }
+    let Some((modify_path, remote)) = super::remote::install_args(args) else {
+        return Ok(help::usage(help::Sub::Install));
     };
     let binary = env::current_exe().context("resolve the running binary")?;
     let control = artificer::control_home();
@@ -114,6 +110,7 @@ pub(super) fn install_cmd(args: &[String]) -> Result<ExitCode> {
     println!("artificer: shim {}", report.shim.display());
     println!("artificer: store {}", artificer::default_home().display());
     path_setup(&control, modify_path)?;
+    super::remote::install_remote(remote)?;
     Ok(ExitCode::from(0))
 }
 

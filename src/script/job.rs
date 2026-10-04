@@ -33,12 +33,11 @@ impl Job<'_> {
         let (pkg, settings) = (self.pkg, self.settings);
         let home = Some(settings.home.as_path());
         let mut key = Key::new();
-        key.feed(b"build-script-env-v7");
+        key.feed(b"build-script-env-v8");
         key.feed(&[u8::from(settings.release), u8::from(self.debug)]);
         key.feed_str(self.opt_level);
         key.feed_str(&crate::key::rustc_bin());
         key.feed_str(&std::env::var("RUSTDOC").unwrap_or_else(|_| "rustdoc".into()));
-        key.feed_str(&crate::schedule::job_cap().to_string());
         for flag in &settings.rustflags {
             key.feed_str(flag);
         }

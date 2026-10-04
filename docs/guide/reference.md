@@ -75,8 +75,10 @@ directly to see the reason.
 | artificer env | Print the shell command that puts the shim first on PATH |
 | artificer export DIR [--days N] [--max-gb N] | Copy units used in the last N days (default 7), newest first, under the size cap |
 | artificer import DIR | Add missing units from an exported directory |
+| artificer remote [set LOCATION \| off] | Show, set, or clear the remote store. LOCATION is `HOST:/ABSOLUTE/PATH` over SSH, or an absolute directory |
+| artificer pull | Add missing complete units from the remote store |
 | artificer enable / disable | Persist caching state for the selected store |
-| artificer install [--no-modify-path] | Put the launchers and recorded Cargo path in place and add the shim to PATH (shell profiles on macOS and Linux, the user PATH on Windows); `--no-modify-path` skips this |
+| artificer install [--no-modify-path] [--remote LOCATION] | Put the launchers and recorded Cargo path in place and add the shim to PATH (shell profiles on macOS and Linux, the user PATH on Windows); `--no-modify-path` skips this; `--remote LOCATION` sets the remote store and starts the first pull in the background |
 | artificer uninstall [--purge] | Remove the launchers, recorded Cargo path, and the PATH entries install added; run `cargo uninstall artificer-build` when Cargo installed Artificer; `--purge` also deletes the cache |
 | artificer mods | List compile modes |
 | artificer help COMMAND, artificer COMMAND --help | Print the usage and options of one command |
@@ -126,6 +128,7 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | ARTIFICER_NOSERVE | Force the in-process build path |
 | ARTIFICER_NO_TREE | Skip the per-invocation feature probe; every handled command falls back to Cargo |
 | ARTIFICER_STORE_CAP_GB | Store size limit in GiB. Unset, the cap is 15% of the volume (at least 8 GiB). A value above that share is clamped to it. |
+| ARTIFICER_REMOTE | Remote store for `artificer pull`; overrides `artificer remote set`. Empty turns it off |
 | ARTIFICER_JOBS | Maximum Artificer compile workers in one process |
 | CARGO_BUILD_JOBS | Cargo's job cap; used when ARTIFICER_JOBS is unset |
 | ARTIFICER_CODEGEN=llvm or off | Disable automatic Cranelift selection when its mode is on |

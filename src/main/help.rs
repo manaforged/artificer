@@ -21,6 +21,8 @@ pub(super) enum Sub {
     Export,
     Import,
     Mods,
+    Remote,
+    Pull,
 }
 
 type Opt = (&'static str, &'static str);
@@ -74,7 +76,7 @@ const GLOBAL: &[Opt] = &[
 ];
 const HELP_ONLY: &[Opt] = &[("-h, --help", "Print help")];
 
-const ENTRIES: [Entry; 19] = [
+const ENTRIES: [Entry; 21] = [
     Entry {
         sub: Sub::Check,
         name: "check",
@@ -177,12 +179,18 @@ const ENTRIES: [Entry; 19] = [
         sub: Sub::Install,
         name: "install",
         summary: "Install the cargo shim and put it first on PATH",
-        usage: "artificer install [--no-modify-path]",
+        usage: "artificer install [--no-modify-path] [--remote LOCATION]",
         options: &[
-            &[(
-                "--no-modify-path",
-                "Print the PATH line instead of editing profiles",
-            )],
+            &[
+                (
+                    "--no-modify-path",
+                    "Print the PATH line instead of editing profiles",
+                ),
+                (
+                    "--remote <LOCATION>",
+                    "Set the remote store and start the first pull",
+                ),
+            ],
             HELP_ONLY,
         ],
     },
@@ -218,6 +226,29 @@ const ENTRIES: [Entry; 19] = [
         name: "mods",
         summary: "List or change optional compile modes",
         usage: "artificer mods [on|off NAME]",
+        options: &[HELP_ONLY],
+    },
+    Entry {
+        sub: Sub::Remote,
+        name: "remote",
+        summary: "Show, set, or clear the remote store that pull reads",
+        usage: "artificer remote [set LOCATION | off]",
+        options: &[
+            &[
+                (
+                    "set <LOCATION>",
+                    "HOST:/ABSOLUTE/PATH over ssh, or an absolute directory",
+                ),
+                ("off", "Clear the remote"),
+            ],
+            HELP_ONLY,
+        ],
+    },
+    Entry {
+        sub: Sub::Pull,
+        name: "pull",
+        summary: "Add missing units from the remote store",
+        usage: "artificer pull",
         options: &[HELP_ONLY],
     },
 ];

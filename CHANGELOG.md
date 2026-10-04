@@ -78,6 +78,13 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 - Units no longer record the store's path. Build-script output, recorded
   inputs, and compiled output name the store with a placeholder, so units
   exported from one store hit after import into a store at another path.
+- `artificer remote` and `artificer pull` copy complete units from another
+  machine's store over SSH or from a directory. Handled builds start a
+  background pull every 15 minutes when a remote is set.
+  `artificer install --remote LOCATION` sets it up.
+- Build-script units no longer depend on the machine's CPU count, the
+  Cargo home path, or paths inside compiled objects in `OUT_DIR`, so they
+  hit on other machines and in moved checkouts.
 
 ## 0.1.1 - 2026-09-26
 
