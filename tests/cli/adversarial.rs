@@ -60,6 +60,13 @@ fn equal_package_names_from_different_sources_keep_separate_features() {
         String::from_utf8_lossy(&result.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "true false");
+    let stat = artificer(&temp.path().join("shim/store"), &root)
+        .args(["stat", "--json"])
+        .output()
+        .expect("read store statistics");
+    let value: serde_json::Value = serde_json::from_slice(&stat.stdout).expect("stat JSON");
+    assert_eq!(value["fallbacks"], 0, "{value}");
+    assert!(value["misses"].as_u64().unwrap_or(0) >= 2, "{value}");
 }
 
 #[test]

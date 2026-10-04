@@ -50,6 +50,9 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
   every edit added a unit that stayed until the age limit or the size cap.
 - `artificer clean` and garbage collection remove scratch directories that
   have no published unit and are more than an hour old.
+- A workspace that has two packages with the same name and version from
+  different sources, such as a path crate and a git dependency, now builds
+  through the cache instead of running Cargo.
 
 ## 0.1.1 - 2026-09-26
 

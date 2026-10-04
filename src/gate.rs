@@ -79,15 +79,6 @@ fn config_location_reason(pkg_dir: &Path) -> Result<Option<String>> {
 }
 
 fn manifest_reason(req: &ServeRequest, meta: &cargo::Metadata, pkg_dir: &Path) -> Option<String> {
-    let mut identities = std::collections::HashSet::new();
-    for pkg in &meta.packages {
-        if !identities.insert((&pkg.name, &pkg.version)) {
-            return Some(
-                "packages with the same name and version from different sources belong to Cargo"
-                    .into(),
-            );
-        }
-    }
     let ws = cargo::root(meta, pkg_dir);
     let profile = if req.release {
         "release"
