@@ -147,11 +147,11 @@ fn a_config_patch_builds_through_the_cache() {
         "pub fn which() -> &'static str { \"patched\" }\n",
     );
     let root = tmp.path().join("app");
-    let url = format!("file://{}", upstream.display());
+    let url = file_url(&upstream);
     write(
         &root.join("Cargo.toml"),
         &format!(
-            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\ndep = {{ git = \"{url}\" }}\n"
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\ndep = {{ git = '{url}' }}\n"
         ),
     );
     write(
@@ -161,7 +161,7 @@ fn a_config_patch_builds_through_the_cache() {
     write(
         &root.join(".cargo/config.toml"),
         &format!(
-            "[patch.\"{url}\"]\ndep = {{ path = \"{}\" }}\n",
+            "[patch.'{url}']\ndep = {{ path = '{}' }}\n",
             local.display()
         ),
     );
