@@ -9,6 +9,11 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- `CARGO_PROFILE_<NAME>_<KEY>` environment variables for the profile keys
+  Artificer applies, such as `CARGO_PROFILE_DEV_DEBUG=0`, go through the
+  cache instead of running Cargo. They override the manifest's profile, as
+  in Cargo. A value Cargo would reject, `INHERITS`, and the `PACKAGE` and
+  `BUILD_OVERRIDE` forms still run Cargo.
 - A new `early` mode, off by default, starts a crate's dependents in
   `check` builds as soon as rustc writes its early metadata: the item
   interfaces, before function bodies are checked. It needs a rustc that

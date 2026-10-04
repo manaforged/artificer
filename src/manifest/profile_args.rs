@@ -30,8 +30,9 @@ pub enum UnitUse {
 #[must_use]
 pub fn profile(workspace_root: &Path, name: &str, unit: UnitUse) -> Vec<String> {
     let doc = read(&workspace_root.join("Cargo.toml"));
+    let env = ProfileEnv::from_process().unwrap_or_default();
     let mut values = Values::defaults(matches!(name, "release" | "bench"));
-    for p in chain(&doc, name) {
+    for p in chain(&doc, name, &env) {
         values.apply(&p);
     }
     if unit == UnitUse::BuildOnly {
@@ -40,14 +41,14 @@ pub fn profile(workspace_root: &Path, name: &str, unit: UnitUse) -> Vec<String> 
     values.args()
 }
 
-fn chain(doc: &Doc, name: &str) -> Vec<Profile> {
+fn chain(doc: &Doc, name: &str, env: &ProfileEnv) -> Vec<Profile> {
     let mut chain: Vec<Profile> = Vec::new();
     let mut cursor = Some(name.to_string());
     while let Some(key) = cursor.take() {
-        if let Some(p) = doc.profile.get(&key) {
-            cursor = p.inherits.clone().filter(|i| i != &key);
-            chain.push(p.clone());
-        }
+        let mut p = doc.profile.get(&key).cloned().unwrap_or_default();
+        env.apply(&key, &mut p);
+        cursor = p.inherits.clone().filter(|i| i != &key);
+        chain.push(p);
         if cursor.is_none() {
             cursor = implicit_parent(&key).map(str::to_string);
         }
@@ -172,6 +173,7 @@ const INCREMENTAL_ROOT: &str = "dev";
 const INCREMENTAL_KEY: &str = "incremental";
 
 pub fn profile_gate(workspace_root: &Path, name: &str) -> Result<bool, String> {
+    let env = ProfileEnv::from_process()?;
     let body = cached_body(&workspace_root.join("Cargo.toml"))?;
     let doc: toml::Value =
         toml::from_str(&body).map_err(|e| format!("cannot parse the workspace manifest: {e}"))?;
@@ -183,6 +185,9 @@ pub fn profile_gate(workspace_root: &Path, name: &str) -> Result<bool, String> {
             break;
         };
         root.clone_from(&profile_name);
+        if incremental.is_none() {
+            incremental = env.incremental(&profile_name);
+        }
         if let Some(table) = doc
             .get("profile")
             .and_then(|p| p.get(&profile_name))

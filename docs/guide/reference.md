@@ -60,7 +60,10 @@ input. Fallback cases include:
 - `build.rustc`, `build.target`, and target linker/runner settings in
   `.cargo/config.toml`;
 - Cargo-owned environment Artificer would otherwise ignore:
-  `CARGO_PROFILE_*`, `CARGO_UNSTABLE_*`, `CARGO_TARGET_*` (except
+  `CARGO_PROFILE_*` other than a profile's `OPT_LEVEL`, `DEBUG`,
+  `SPLIT_DEBUGINFO`, `STRIP`, `DEBUG_ASSERTIONS`, `OVERFLOW_CHECKS`, `LTO`,
+  `PANIC`, `INCREMENTAL`, `CODEGEN_UNITS`, and `RPATH` with a value Cargo
+  accepts, `CARGO_UNSTABLE_*`, `CARGO_TARGET_*` (except
   `CARGO_TARGET_DIR`), and the `CARGO_BUILD_*` settings that change the
   build;
 - a feature probe (the step that asks Cargo which features are enabled)

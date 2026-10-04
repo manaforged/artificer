@@ -150,6 +150,9 @@ mod dispatch;
 #[path = "cli/profile.rs"]
 mod profile;
 
+#[path = "cli/profile_env.rs"]
+mod profile_env;
+
 #[path = "cli/harness.rs"]
 mod harness;
 
