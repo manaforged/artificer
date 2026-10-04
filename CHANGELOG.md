@@ -27,8 +27,8 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 - A new `trust` mode, on by default, passes `-Z trusted-crate` to crates.io
   dependencies when rustc accepts it. That rustc skips checks that only
   report errors, such as borrowck and lints, for crates that already
-  compile; a cold build of a 600-crate workspace used 10% less CPU. Stock
-  rustc does not accept the flag, so nothing changes with it.
+  compile. Stock rustc does not accept the flag, so nothing changes with
+  it.
 - With a remote store set, a build takes each unit it misses from the
   remote store before compiling it: a copy from a directory, or one rsync
   over a shared SSH connection. A cold build no longer waits for the
@@ -40,7 +40,7 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 - The `slim` mode lowers debug info to line tables again. Its flag came
   before the profile's `-C debuginfo`, so rustc used the profile's value.
 - The `threads` mode uses up to 8 frontend threads instead of a quarter
-  of the cores; two threads on a 10-core Mac made a cold build slower.
+  of the cores.
 - The `threads`, `cranelift`, and `linker` modes take effect again. Their
   compiler probe wrote into a directory it never created, so each probe
   failed and the mode stayed off.
