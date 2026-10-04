@@ -22,7 +22,9 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 - A new `early` mode, off by default, starts a crate's dependents in
   `check` builds as soon as rustc writes its early metadata: the item
   interfaces, before function bodies are checked. It needs a rustc that
-  accepts `-Z early-metadata`; with stock rustc nothing changes.
+  accepts `-Z early-metadata`; with stock rustc nothing changes. Other
+  builds pass the flag too, and build profiles record when each crate
+  wrote its early metadata and its full metadata.
 - `check` builds start a crate's dependents once its metadata is written,
   as `build` does, rather than after every crate below it finishes. A
   crate that a proc macro or build script also needs no longer holds up
