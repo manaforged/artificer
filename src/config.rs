@@ -37,8 +37,9 @@ struct Build {
     rustc_workspace_wrapper: Option<String>,
 }
 
-const CONFIG_TABLES: [&str; 13] = [
+const CONFIG_TABLES: [&str; 14] = [
     "build",
+    "resolver",
     "target",
     "profile",
     "env",
@@ -61,6 +62,8 @@ const BUILD_MODELED: [&str; 4] = [
 ];
 
 const BUILD_IGNORED: [&str; 3] = ["jobs", "incremental", "dep-info-basedir"];
+
+const RESOLVER_IGNORED: [&str; 1] = ["incompatible-rust-versions"];
 
 const BUILD_NAMED: [&str; 4] = ["rustc", "rustdoc", "rustdocflags", "target"];
 
@@ -237,6 +240,13 @@ fn read_config(path: &Path) -> Result<(ConfigDoc, Vec<String>), String> {
                     || BUILD_NAMED.contains(&key.as_str());
                 if !known {
                     unmodeled.push(format!("build.{key} in {shown}"));
+                }
+            }
+        }
+        if let Some(resolver) = table.get("resolver").and_then(toml::Value::as_table) {
+            for key in resolver.keys() {
+                if !RESOLVER_IGNORED.contains(&key.as_str()) {
+                    unmodeled.push(format!("resolver.{key} in {shown}"));
                 }
             }
         }

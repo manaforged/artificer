@@ -285,3 +285,31 @@ fn a_target_directory_flag_builds_through_the_cache_into_that_directory() {
     let value: serde_json::Value = serde_json::from_slice(&stat.stdout).expect("stat JSON");
     assert_eq!(value["fallbacks"], 0, "{value}");
 }
+
+#[test]
+fn a_resolver_version_policy_builds_through_the_cache() {
+    let temp = tempfile::tempdir().expect("create isolated fixture");
+    let root = temp.path().join("project");
+    write_clean_pkg(&root);
+    fs::create_dir_all(root.join(".cargo")).expect("create fixture directory");
+    let build = |config: &str| {
+        fs::write(root.join(".cargo/config.toml"), config).expect("write fixture file");
+        artificer(&temp.path().join("store"), &root)
+            .arg("build")
+            .output()
+            .expect("run fixture command")
+    };
+    let policy = build("[resolver]\nincompatible-rust-versions = \"fallback\"\n");
+    assert!(
+        policy.status.success(),
+        "{}",
+        String::from_utf8_lossy(&policy.stderr)
+    );
+    let unification = build("[resolver]\nfeature-unification = \"package\"\n");
+    assert!(!unification.status.success());
+    assert!(
+        String::from_utf8_lossy(&unification.stderr).contains("resolver.feature-unification"),
+        "{}",
+        String::from_utf8_lossy(&unification.stderr)
+    );
+}

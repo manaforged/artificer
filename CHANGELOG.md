@@ -57,6 +57,9 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
   goes through the cache instead of running Cargo. As in Cargo, it wins
   over `CARGO_TARGET_DIR` and `build.target-dir`, and a relative path is
   relative to the current directory.
+- `[resolver] incompatible-rust-versions` in Cargo configuration no longer
+  sends builds to Cargo. It only changes how versions are picked when the
+  lockfile is written. Other `[resolver]` keys still do.
 
 ## 0.1.1 - 2026-09-26
 
