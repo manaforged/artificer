@@ -254,7 +254,7 @@ pub(crate) fn unit_digest(
             ));
         }
         if std::env::var("ARTIFICER_DEBUG_KEY").is_ok_and(|w| w == pkg.name) {
-            eprintln!("KEY {} digest={digest}\n{trace}", pkg.name);
+            crate::out::diag(format!("KEY {} digest={digest}\n{trace}", pkg.name));
         }
         crate::keylog::record(&sess.settings.home, &pkg.name, &digest, &trace);
     }

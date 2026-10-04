@@ -192,8 +192,16 @@ pub fn out(s: impl Display) {
                 drop(writeln!(buf, "{s}"));
             }
         }
-        None => println!("{s}"),
+        None => write_out(&format!("{s}\n")),
     }
+}
+
+pub fn write_out(text: &str) {
+    drop(std::io::stdout().write_all(text.as_bytes()));
+}
+
+pub fn write_err(text: &str) {
+    drop(std::io::stderr().write_all(text.as_bytes()));
 }
 
 pub fn err(s: impl Display) {
@@ -210,7 +218,7 @@ pub fn diag(s: impl Display) {
                 drop(writeln!(buf, "{s}"));
             }
         }
-        None => eprintln!("{s}"),
+        None => write_err(&format!("{s}\n")),
     }
 }
 

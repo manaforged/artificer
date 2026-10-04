@@ -138,6 +138,28 @@ impl Board {
     }
 }
 
+struct Running<'a> {
+    board: &'a Board,
+    unit: Option<Unit>,
+}
+
+impl Running<'_> {
+    fn finish(mut self, failure: Option<anyhow::Error>) {
+        if let Some(unit) = self.unit.take() {
+            self.board.finish(unit, failure);
+        }
+    }
+}
+
+impl Drop for Running<'_> {
+    fn drop(&mut self) {
+        if let Some(unit) = self.unit.take() {
+            self.board
+                .finish(unit, Some(anyhow::anyhow!("a build worker panicked")));
+        }
+    }
+}
+
 fn run_units<T: Send>(
     meta: &cargo::Metadata,
     plan: Plan,
@@ -172,6 +194,10 @@ fn run_units<T: Send>(
                         let at = u32::try_from(*order.get(&unit)?).ok()?;
                         Some(base.saturating_add(at))
                     });
+                    let running = Running {
+                        board: &board,
+                        unit: Some(unit.clone()),
+                    };
                     let result = crate::profile::unit(index, || {
                         ready::with(Arc::clone(&board), &unit, || work(&unit))
                     });
@@ -180,10 +206,10 @@ fn run_units<T: Send>(
                             outputs
                                 .lock()
                                 .unwrap_or_else(PoisonError::into_inner)
-                                .push((unit.clone(), value));
-                            board.finish(unit, None);
+                                .push((unit, value));
+                            running.finish(None);
                         }
-                        Err(error) => board.finish(unit, Some(error)),
+                        Err(error) => running.finish(Some(error)),
                     }
                 }
             });

@@ -129,7 +129,7 @@ pub(crate) fn run_rustc_inner(
         "--json=diagnostic-rendered-ansi,artifacts",
     ]);
     if std::env::var_os("ARTIFICER_TRACE").is_some() || crate::out::trace() {
-        eprintln!("ARTIFICER_CMD {}: {:?}", pkg.name, cmd);
+        crate::out::diag(format!("ARTIFICER_CMD {}: {:?}", pkg.name, cmd));
     }
     let path = out.join(DIAGNOSTICS);
     let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;

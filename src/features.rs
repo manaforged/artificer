@@ -220,7 +220,7 @@ fn read_tree(path: &Path) -> Option<String> {
 
 fn dbg_sel(msg: &str) {
     if std::env::var_os("ARTIFICER_DEBUG_SEL").is_some() {
-        eprintln!("SEL {msg}");
+        crate::out::diag(format!("SEL {msg}"));
     }
 }
 

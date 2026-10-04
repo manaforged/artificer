@@ -129,3 +129,38 @@ fn a_build_script_starts_while_the_package_dependencies_compile() {
     state.meta.insert(pkg("slow"));
     assert_eq!(state.pick(), Some(pkg("p")));
 }
+
+#[test]
+fn a_panicking_unit_ends_the_build_instead_of_hanging() {
+    let _guard = ENV.lock().expect("environment test lock");
+    unsafe {
+        std::env::set_var("ARTIFICER_JOBS", "2");
+    }
+    let (sent, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let meta: crate::cargo::Metadata =
+            serde_json::from_str(r#"{"packages": []}"#).expect("empty metadata");
+        let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
+        deps.insert(pkg("after"), vec![pkg("broken")]);
+        let plan = Plan {
+            units: vec![pkg("broken"), pkg("after")],
+            deps,
+            links: HashSet::new(),
+        };
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_units(&meta, plan, |unit| {
+                if *unit == pkg("broken") {
+                    panic!("unit work failed");
+                }
+                Ok(())
+            })
+        }));
+        sent.send(outcome.is_err())
+            .expect("the test waits for the outcome");
+    });
+    let panicked = received.recv_timeout(std::time::Duration::from_secs(30));
+    unsafe {
+        std::env::remove_var("ARTIFICER_JOBS");
+    }
+    assert_eq!(panicked, Ok(true));
+}

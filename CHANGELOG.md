@@ -9,6 +9,10 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- A build no longer hangs when its standard error closes early, as in
+  `cargo build 2>&1 | head`. Artificer's own messages ignore a closed pipe,
+  and a build worker that crashes now fails the build instead of leaving
+  the others waiting forever.
 - A package used only at build time, by a build script or a proc macro,
   compiles with Cargo's `build-override` defaults: no debug info, no
   optimization, no embedded bitcode, and unwinding panics. Its build script

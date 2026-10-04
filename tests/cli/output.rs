@@ -78,3 +78,49 @@ fn status_lines_follow_cargo_and_the_color_flag() {
     let stat = artificer::store_stat(&tmp.path().join("shim/store")).unwrap();
     assert_eq!(stat.fallbacks, 0, "{:?}", stat.fallback_last);
 }
+
+#[test]
+fn a_closed_stderr_does_not_hang_the_build() {
+    use std::io::Read;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("ws");
+    write_workspace(
+        &root,
+        &[
+            ("a", "pub fn a() {}\n"),
+            ("b", "pub fn b() {}\n"),
+            ("c", "pub fn c() {}\n"),
+        ],
+    );
+    let manifest = root.join("crates/c/Cargo.toml");
+    let text = fs::read_to_string(&manifest).unwrap();
+    fs::write(
+        &manifest,
+        format!("{text}\n[dependencies]\na = {{ path = \"../a\" }}\nb = {{ path = \"../b\" }}\n"),
+    )
+    .unwrap();
+    let mut child = artificer(&tmp.path().join("home"), &root)
+        .env("ARTIFICER_TRACE", "1")
+        .arg("build")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+    let mut first = [0u8; 1];
+    stderr.read_exact(&mut first).unwrap();
+    drop(stderr);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if std::time::Instant::now() > deadline {
+            drop(child.kill());
+            panic!("the build hung after its stderr closed");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    assert!(status.success(), "{status}");
+}

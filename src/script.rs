@@ -148,9 +148,9 @@ use directives::input_stamp;
 
 fn debug_key(pkg: &Package, digest: &str, features: &[String], externs: usize) {
     if std::env::var("ARTIFICER_DEBUG_KEY").is_ok_and(|w| w == pkg.name) {
-        eprintln!(
+        crate::out::diag(format!(
             "SCRIPT {} digest={digest} feats={features:?} externs={externs}",
             pkg.name,
-        );
+        ));
     }
 }

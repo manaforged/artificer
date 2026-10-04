@@ -221,20 +221,14 @@ fn readiness(home: &Path) -> Readiness {
 
 fn outcome(reply: Reply) -> Option<Result<i32>> {
     if reply.ok {
-        if !reply.stdout.is_empty() {
-            print!("{}", reply.stdout);
-        }
-        if !reply.stderr.is_empty() {
-            eprint!("{}", reply.stderr);
-        }
+        crate::out::write_out(&reply.stdout);
+        crate::out::write_err(&reply.stderr);
         return Some(Ok(reply.code));
     }
     if reply.err == "bad token" {
         return None;
     }
-    if !reply.stderr.is_empty() {
-        eprint!("{}", reply.stderr);
-    }
+    crate::out::write_err(&reply.stderr);
     if reply.err.is_empty() {
         return Some(Ok(reply.code));
     }
