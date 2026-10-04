@@ -9,6 +9,8 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- Artificer raises its open-file limit at startup, as Cargo does. A cold
+  build of a large workspace on macOS stopped with "Too many open files".
 - A test target with `harness = false` runs its own `main` again. Artificer
   had compiled it with the libtest harness, so it reported `running 0
   tests` and passed. `cargo check --tests` leaves out its `#[test]`

@@ -18,6 +18,8 @@ impl From<ExitCode> for Dispatch {
 }
 
 fn main() -> ExitCode {
+    #[cfg(unix)]
+    drop(artificer::raise_open_file_limit());
     if let Some(path) = artificer::toolchain_path() {
         // SAFETY: main has not started another thread yet.
         unsafe { env::set_var("PATH", path) };

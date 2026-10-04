@@ -26,6 +26,41 @@ pub fn env_path(p: &Path) -> PathBuf {
     p.to_path_buf()
 }
 
+#[cfg(target_os = "macos")]
+const OPEN_FILE_CEILING: libc::rlim_t = 10240;
+
+#[cfg(target_os = "macos")]
+fn open_file_target(hard: libc::rlim_t) -> libc::rlim_t {
+    hard.min(OPEN_FILE_CEILING)
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_file_target(hard: libc::rlim_t) -> libc::rlim_t {
+    hard
+}
+
+#[cfg(unix)]
+pub fn raise_open_file_limit() -> std::io::Result<()> {
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: getrlimit writes one complete rlimit into this valid, exclusively borrowed struct.
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let wanted = open_file_target(limit.rlim_max);
+    if limit.rlim_cur >= wanted {
+        return Ok(());
+    }
+    limit.rlim_cur = wanted;
+    // SAFETY: setrlimit reads the valid rlimit above; a soft limit at or below the hard limit needs no privilege.
+    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &limit) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
 pub fn alive(pid: u32) -> bool {
     std::process::Command::new("kill")

@@ -61,6 +61,8 @@ pub use keylog::why_miss;
 pub use maintenance::{StoreStat, doctor, fallback_report, store_stat, sweep_dir};
 pub use mods::{Mods, enabled, load as load_mods, save as save_mods};
 pub use out::{ColorChoice, Reported, error as report_error, set_color, set_quiet, set_trace};
+#[cfg(unix)]
+pub use platform::raise_open_file_limit;
 pub use profile::{
     Phase, ProfileCommand, Recording as ProfileRecording, RunPhase, begin as begin_profile,
     profile_command, request_timings, span as profile_span,

@@ -144,6 +144,10 @@ mod profile;
 #[path = "cli/harness.rs"]
 mod harness;
 
+#[cfg(unix)]
+#[path = "cli/limits.rs"]
+mod limits;
+
 #[path = "cli/shim.rs"]
 mod shim_dispatch;
 
