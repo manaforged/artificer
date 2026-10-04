@@ -171,7 +171,7 @@ impl Session {
         if let Some(key) = cached {
             return Ok(key);
         }
-        let key = crate::out::timed(&format!("key {}", pkg.name), || {
+        let key = crate::profile::span(crate::profile::UnitPhase::Key, || {
             crate::key::lib(
                 Some(&self.settings.home),
                 pkg.root(),

@@ -23,6 +23,7 @@ pub(super) enum Sub {
     Mods,
     Remote,
     Pull,
+    Profile,
 }
 
 type Opt = (&'static str, &'static str);
@@ -62,6 +63,10 @@ const TARGETS: &[Opt] = &[
     ),
     ("--tests", "All targets with `test = true`"),
     ("--message-format <FMT>", "Diagnostic format"),
+    (
+        "--timings",
+        "Write the HTML timing report to target/cargo-timings",
+    ),
 ];
 const CHECK_TARGETS: &[Opt] = &[
     ("--bench <NAME>", "Only the named benchmark (repeatable)"),
@@ -74,11 +79,19 @@ const TEST: &[Opt] = &[
     ("--test <NAME>", "Run only the named integration test"),
     ("--no-fail-fast", "Run every test binary after a failure"),
     ("--message-format <FMT>", "Diagnostic format"),
+    (
+        "--timings",
+        "Write the HTML timing report to target/cargo-timings",
+    ),
     ("-- <ARGS>", "Arguments for the test harness"),
 ];
 const RUN: &[Opt] = &[
     ("--bin <NAME>", "Binary to run"),
     ("--example <NAME>", "Example to run"),
+    (
+        "--timings",
+        "Write the HTML timing report to target/cargo-timings",
+    ),
     ("-- <ARGS>", "Arguments for the program"),
 ];
 const GLOBAL: &[Opt] = &[
@@ -89,7 +102,7 @@ const GLOBAL: &[Opt] = &[
 ];
 const HELP_ONLY: &[Opt] = &[("-h, --help", "Print help")];
 
-const ENTRIES: [Entry; 21] = [
+const ENTRIES: [Entry; 22] = [
     Entry {
         sub: Sub::Check,
         name: "check",
@@ -166,6 +179,24 @@ const ENTRIES: [Entry; 21] = [
         summary: "Show why handled commands fell back to stock Cargo",
         usage: "artificer why-fallback [--limit N]",
         options: &[&[("--limit <N>", "Reasons to show (default 5)")], HELP_ONLY],
+    },
+    Entry {
+        sub: Sub::Profile,
+        name: "profile",
+        summary: "Show where a build spent its time",
+        usage: "artificer profile [ID] [--json] [--trace FILE] [--html FILE] | list [--limit N] [--json] | diff BASE HEAD [--json]",
+        options: &[
+            &[
+                ("<ID>", "Profile ID or unique prefix (default: newest)"),
+                ("--json", "Print one JSON document"),
+                ("--trace <FILE>", "Write a Chrome trace for Perfetto"),
+                ("--html <FILE>", "Write a self-contained HTML report"),
+                ("list", "List recorded builds, newest first"),
+                ("--limit <N>", "Builds to list (default 20)"),
+                ("diff <BASE> <HEAD>", "Compare two builds"),
+            ],
+            HELP_ONLY,
+        ],
     },
     Entry {
         sub: Sub::Env,

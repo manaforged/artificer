@@ -36,6 +36,7 @@ pub fn stop(home: &Path) -> Result<()> {
             tests: false,
             all_targets: false,
             args: Vec::new(),
+            profile: None,
         },
     ));
     control(home, "serve.stop", b"")?;
@@ -93,6 +94,7 @@ pub fn ping(home: &Path) -> bool {
         tests: false,
         all_targets: false,
         args: Vec::new(),
+        profile: None,
     };
     probe(home, &req).is_ok_and(|r| r.ok && r.stderr.contains("pong"))
 }
@@ -171,6 +173,20 @@ pub(super) fn compiler_env_snapshot() -> String {
     key.full_digest()
 }
 
+fn served(home: &Path, req: &mut Request) -> Option<(Reply, Instant)> {
+    let sent = Instant::now();
+    if let Ok(reply) = call(home, req) {
+        return Some((reply, sent));
+    }
+    spawn(home).ok()?;
+    if fs::read_to_string(home.join("serve.env")).ok()? != compiler_env_snapshot() {
+        return None;
+    }
+    req.token = read_token(home).ok()?;
+    let sent = Instant::now();
+    call(home, req).ok().map(|reply| (reply, sent))
+}
+
 pub fn try_run(home: &Path, req: &mut Request) -> Option<Result<i32>> {
     if cfg!(windows)
         || std::env::var_os("ARTIFICER_NOSERVE").is_some()
@@ -195,17 +211,12 @@ pub fn try_run(home: &Path, req: &mut Request) -> Option<Result<i32>> {
         };
     }
     req.token = read_token(home).unwrap_or_default();
-    let r = match call(home, req) {
-        Ok(r) => r,
-        Err(_) => {
-            spawn(home).ok()?;
-            if fs::read_to_string(home.join("serve.env")).ok()? != compiler_env_snapshot() {
-                return None;
-            }
-            req.token = read_token(home).ok()?;
-            call(home, req).ok()?
-        }
-    };
+    req.profile = crate::profile::id();
+    let (mut r, sent) =
+        crate::profile::span(crate::profile::WrapperPhase::Serve, || served(home, req))?;
+    if let Some(part) = r.profile.take() {
+        crate::profile::merge(part, sent);
+    }
     if r.ok {
         if !r.stdout.is_empty() {
             print!("{}", r.stdout);

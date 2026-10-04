@@ -193,13 +193,13 @@ pub(super) fn plan(
 ) -> Result<Plan> {
     let manifest = cargo::find_manifest(dir)?;
     let extra: Vec<&str> = extra.iter().map(String::as_str).collect();
-    let mut meta = crate::out::timed("metadata", || {
+    let mut meta = crate::profile::span(crate::profile::SetupPhase::Metadata, || {
         cargo::metadata_extra(&manifest, &extra, home)
     })?;
     let pkg_dir = manifest.parent().unwrap_or(dir).to_path_buf();
     sweep_meta(&meta, home, &pkg_dir, target)?;
     let roots = check_roots(&meta, &pkg_dir, packages, workspace)?;
-    let found = crate::out::timed("probe", || {
+    let found = crate::profile::span(crate::profile::SetupPhase::FeatureProbe, || {
         features::selected(&manifest, &roots, &meta, &extra, dev, home)
     });
     let Some(sel) = found else {
@@ -273,7 +273,7 @@ fn check_session(
 ) -> Result<Session> {
     let meta = &plan.meta;
     let ws = cargo::root(meta, &plan.pkg_dir);
-    let mut sess = crate::out::timed("session", || {
+    let mut sess = crate::profile::span(crate::profile::SetupPhase::Session, || {
         Session::with_profile(
             home,
             &plan.pkg_dir,

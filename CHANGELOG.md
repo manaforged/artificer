@@ -9,6 +9,18 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- Every `check`, `build`, `test`, `run`, and `warm` command records a build
+  profile. `artificer profile` shows
+  where the newest build spent its time: the critical path, idle cores,
+  Artificer setup time, phases, and the longest units. `profile list`
+  lists recorded builds, `profile diff` compares two, `--json` prints
+  machine output, `--trace` writes a Chrome trace for Perfetto, and
+  `--html` writes an HTML report.
+- `cargo build --timings` and `cargo test --timings` run through
+  Artificer and write Cargo's timing report, instead of falling back to
+  Cargo.
+- `ARTIFICER_PASSES` records rustc pass timings in the build profile
+  instead of printing them.
 - `-p` with a glob pattern or a package ID URL now runs Cargo instead of
   failing.
 - When Artificer cannot use its store directory, the fallback reason says to

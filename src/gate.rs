@@ -5,7 +5,9 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 pub fn passthrough_reason(req: &ServeRequest, dev: bool, home: &Path) -> Result<Option<String>> {
-    crate::out::timed("gate", || passthrough_reason_inner(req, dev, home))
+    crate::profile::span(crate::profile::SetupPhase::Gate, || {
+        passthrough_reason_inner(req, dev, home)
+    })
 }
 
 fn passthrough_reason_inner(req: &ServeRequest, dev: bool, home: &Path) -> Result<Option<String>> {
@@ -139,7 +141,9 @@ fn model_fallback(error: &anyhow::Error) -> Option<String> {
 }
 
 fn below_min_cargo(home: &Path) -> Result<Option<String>> {
-    let version = crate::out::timed("cargo --version", || cargo::cargo_version(home))?;
+    let version = crate::profile::span(crate::profile::SetupPhase::CargoVersion, || {
+        cargo::cargo_version(home)
+    })?;
     Ok(older_than(&version))
 }
 

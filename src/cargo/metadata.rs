@@ -40,8 +40,10 @@ pub fn metadata_extra(manifest: &Path, extra: &[&str], home: &Path) -> Result<Me
         .arg("--filter-platform")
         .arg(&host)
         .args(extra);
-    let out =
-        crate::out::timed("cargo-metadata", || cmd.output()).context("spawn cargo metadata")?;
+    let out = crate::profile::span(crate::profile::SetupPhase::CargoMetadata, || {
+        crate::profile::output(&mut cmd)
+    })
+    .context("spawn cargo metadata")?;
     if !out.status.success() {
         bail!(
             "cargo metadata failed:\n{}",

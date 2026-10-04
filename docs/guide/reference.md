@@ -29,6 +29,7 @@ The supported build commands accept the applicable subset of:
 - --target-dir DIR, which wins over `CARGO_TARGET_DIR` and `build.target-dir`;
 - --release and the dev or release profile names;
 - --message-format=human, =json, and =json-render-diagnostics;
+- --timings for build and test, which writes Cargo's HTML timing report;
 - -j/--jobs N, -q/--quiet, -v/--verbose, and --color auto|always|never;
 - --lib, --bin NAME, --bins, --example NAME, --examples, --test NAME, and
   --tests for check and build, with the same target selection as Cargo;
@@ -75,6 +76,7 @@ directly to see the reason.
 | --- | --- |
 | artificer stat [--json] | Show cache size, entry counts, hit and miss totals, the last build, fallback count, and modes; `--json` prints one object |
 | artificer why-fallback [--limit N] | Show fallback reasons, most frequent first |
+| artificer profile [ID] | Show where a build spent its time; `list`, `diff BASE HEAD`, `--json`, `--trace FILE`, and `--html FILE` |
 | artificer why-miss CRATE | Show what changed between the last two key records of one crate |
 | artificer doctor | Check the mode, shim PATH precedence, real Cargo, store path, jobserver, store, rustc, fallbacks, daemon, and rust-analyzer |
 | artificer warm | Compile the current workspace into the shared store |
@@ -144,11 +146,11 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | ARTIFICER_LINKER=off or default | Disable automatic linker selection |
 | ARTIFICER_LINKER=PATH | Use an explicit linker when the linker mode is on |
 | ARTIFICER_THREADS=off | Disable rustc frontend threads when their mode is on |
-| ARTIFICER_TIMING | Print Artificer phase timings |
+| ARTIFICER_TIMING | Print Artificer phase timings to stderr; build profiles are recorded either way |
 | ARTIFICER_TRACE | Print rustc commands |
 | ARTIFICER_DEBUG_KEY=CRATE | Print key inputs for one crate |
 | ARTIFICER_DEBUG_SEL | Print feature-resolution selection |
-| ARTIFICER_PASSES | Set to any value to pass `-Ztime-passes` to rustc |
+| ARTIFICER_PASSES | Set to any value to record rustc pass timings in the build profile; runs rustc with `RUSTC_BOOTSTRAP=1` and `-Ztime-passes-format=json`, and does not change unit keys |
 | ARTIFICER_SHIM | Set to any value to stop the direct `artificer` binary from printing the fallback reason |
 
 Artificer honors RUSTC, RUSTFLAGS, CARGO_ENCODED_RUSTFLAGS, RUSTDOC,

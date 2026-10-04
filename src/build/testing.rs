@@ -58,14 +58,15 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
         lib: opts.lib,
         only: opts.only.clone(),
     };
-    let (compiled, mut harnesses) = crate::out::timed("schedule", || {
-        if opts.doc {
-            let compiled = schedule::compile_ids(&sess, meta, &order)?;
-            Ok((compiled, std::collections::HashMap::new()))
-        } else {
-            schedule::compile_ids_and_tests(&sess, meta, &order, roots, &sel)
-        }
-    })?;
+    let (compiled, mut harnesses) =
+        crate::profile::span(crate::profile::WrapperPhase::Schedule, || {
+            if opts.doc {
+                let compiled = schedule::compile_ids(&sess, meta, &order)?;
+                Ok((compiled, std::collections::HashMap::new()))
+            } else {
+                schedule::compile_ids_and_tests(&sess, meta, &order, roots, &sel)
+            }
+        })?;
     let mut bins: Vec<(String, compile::TestBin)> = Vec::new();
     for root in roots {
         if let Some(root_bins) = harnesses.remove(root) {
@@ -192,10 +193,14 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
     let next = Mutex::new(0usize);
     let jobs: Mutex<Vec<Option<Job>>> = Mutex::new(jobs.into_iter().map(Some).collect());
     std::thread::scope(|scope| {
-        for _ in 0..workers {
+        for worker in 0..workers {
             let sink = crate::out::current();
-            scope.spawn(|| {
+            let recorder = crate::profile::current();
+            let (sess, code, failed, next, jobs) = (&sess, &code, &failed, &next, &jobs);
+            scope.spawn(move || {
                 crate::out::attach(sink);
+                crate::profile::attach(recorder);
+                crate::profile::worker(worker);
                 loop {
                     let job = {
                         let mut n = next.lock().expect("test index");
@@ -225,30 +230,24 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
                         }
                     };
                     crate::jobs::isolate(&mut run);
-                    let status = if capture {
-                        match run.output() {
-                            Ok(out) => {
+                    let ran = crate::profile::span(crate::profile::RunPhase::TestRun, || {
+                        if capture {
+                            crate::profile::output(&mut run).map(|out| {
                                 crate::out::replay(&out.stdout, &out.stderr);
                                 out.status
-                            }
-                            Err(e) => {
-                                let mut failed = failed.lock().expect("test spawn");
-                                if failed.is_none() {
-                                    *failed = Some(e.into());
-                                }
-                                return;
-                            }
+                            })
+                        } else {
+                            crate::profile::status(&mut run)
                         }
-                    } else {
-                        match run.status() {
-                            Ok(status) => status,
-                            Err(e) => {
-                                let mut failed = failed.lock().expect("test spawn");
-                                if failed.is_none() {
-                                    *failed = Some(e.into());
-                                }
-                                return;
+                    });
+                    let status = match ran {
+                        Ok(status) => status,
+                        Err(e) => {
+                            let mut failed = failed.lock().expect("test spawn");
+                            if failed.is_none() {
+                                *failed = Some(e.into());
                             }
+                            return;
                         }
                     };
                     if !status.success() {

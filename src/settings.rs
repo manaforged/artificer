@@ -65,7 +65,9 @@ fn target_flags(
 ) -> Result<TargetFlags> {
     let explicit = rustflags();
     let print = if explicit.is_none() || !cfg.target_tools.is_empty() {
-        crate::out::timed("rustc --print cfg", || key::rustc_print_cfg(home, dir))?
+        crate::profile::span(crate::profile::SetupPhase::RustcCfg, || {
+            key::rustc_print_cfg(home, dir)
+        })?
     } else {
         Vec::new()
     };
@@ -162,7 +164,9 @@ impl Settings {
         packages: &[Package],
         target: Option<&Path>,
     ) -> Result<Self> {
-        let rustc = crate::out::timed("rustc -vV", || key::rustc_version_in(home, dir))?;
+        let rustc = crate::profile::span(crate::profile::SetupPhase::RustcVersion, || {
+            key::rustc_version_in(home, dir)
+        })?;
         let host = key::rustc_host(&rustc)?;
         if let Some(name) = crate::gate::gated_env(false) {
             anyhow::bail!("artificer cannot model this environment: {name} is set");
@@ -191,8 +195,10 @@ impl Settings {
         let lto = profile
             .iter()
             .any(|a| a.starts_with("lto=") && a != "lto=false" && a != "lto=off");
+        let target_dir = crate::config::target_dir(target, dir, ws);
+        crate::profile::note_target(&target_dir);
         Ok(Self {
-            target_dir: crate::config::target_dir(target, dir, ws),
+            target_dir,
             workspace_root: ws.to_path_buf(),
             home: crate::resolve_path(home),
             toolchain_dir: dir.to_path_buf(),

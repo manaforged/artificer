@@ -23,6 +23,7 @@ pub(crate) fn fallbacks(home: &Path) -> (u64, Option<String>) {
 }
 
 pub fn note_fallback(home: &Path, reason: &str) {
+    crate::profile::fallback(reason);
     drop(note_fallback_inner(home, reason));
 }
 
@@ -81,6 +82,7 @@ fn note_build_inner(
         "misses": misses,
         "ms": ms,
         "fallback": fallback,
+        "profile": crate::profile::id(),
     });
     let mut file = std::fs::OpenOptions::new()
         .create(true)

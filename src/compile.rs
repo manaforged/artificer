@@ -146,7 +146,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
         invoke::note_rustc(&sess.settings.home);
         invoke::run_rustc(&mut cmd, sess, pkg, lib, &out)?;
         std::fs::write(out.join(unit_key::DEPS_FILE), &manifest)?;
-        crate::out::timed(&format!("publish {}", pkg.name), || action.finish())?;
+        crate::profile::span(crate::profile::UnitPhase::Publish, || action.finish())?;
         RustcOutcome::Ran
     };
 
@@ -199,7 +199,7 @@ fn ensure_script(sess: &Session, pkg: &Package, node: &cargo::Node) -> Result<Op
     if pkg.script_target().is_none() {
         return Ok(None);
     }
-    crate::out::timed(&format!("script {}", pkg.name), || {
+    crate::profile::span(crate::profile::WrapperPhase::Script, || {
         let script = script::ensure(
             pkg,
             sess,

@@ -22,6 +22,7 @@ pub struct BuildArgs {
     pub doc_only: bool,
     pub select: artificer::TargetSel,
     pub pass: Vec<String>,
+    pub timings: bool,
 }
 
 pub enum Parsed {
@@ -282,6 +283,10 @@ impl<'a> Parser<'a> {
             "--quiet" | "-q" => set(&mut self.out.quiet),
             "--verbose" | "-v" => set(&mut self.out.verbose),
             "--keep-going" => Err(fallback("--keep-going belongs to cargo")),
+            "--timings" => match attached {
+                None | Some("html") => set(&mut self.out.timings),
+                Some(other) => Err(fallback(format!("--timings={other} belongs to cargo"))),
+            },
             "--color" => self
                 .value(name, attached)
                 .and_then(|value| color_choice(Some(value)))

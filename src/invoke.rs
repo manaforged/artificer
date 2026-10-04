@@ -16,9 +16,6 @@ pub(crate) fn style(
     pkg: &Package,
     lto_ok: bool,
 ) {
-    if std::env::var_os("ARTIFICER_PASSES").is_some() {
-        cmd.arg("-Ztime-passes");
-    }
     cmd.env_remove("RUSTFLAGS");
     cmd.env_remove("CARGO_ENCODED_RUSTFLAGS");
     if settings.mods.slim {

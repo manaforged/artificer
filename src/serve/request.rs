@@ -30,11 +30,15 @@ fn answer(reader: &mut BufReader<TcpStream>, home: &Path, token: &str) -> Result
         _ => {}
     }
     drop(reader.get_ref().set_read_timeout(None));
-    let (result, stdout, stderr) = crate::out::capture(|| dispatch(home, &req));
-    Ok(match result {
+    let ((result, stdout, stderr), part) = crate::profile::capture(req.profile.clone(), || {
+        crate::out::capture(|| dispatch(home, &req))
+    });
+    let mut reply = match result {
         Ok(code) => Reply::ok(code, stdout, stderr),
         Err(e) => Reply::error(&e, stdout, stderr),
-    })
+    };
+    reply.profile = Some(part);
+    Ok(reply)
 }
 
 fn dispatch(home: &Path, req: &Request) -> Result<i32> {
@@ -98,6 +102,7 @@ impl Reply {
             stdout,
             stderr,
             err: String::new(),
+            profile: None,
         }
     }
 
@@ -118,6 +123,7 @@ impl Reply {
             stdout,
             stderr,
             err,
+            profile: None,
         }
     }
 
@@ -128,6 +134,7 @@ impl Reply {
             stdout: String::new(),
             stderr: String::new(),
             err: err.into(),
+            profile: None,
         }
     }
 }

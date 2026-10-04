@@ -60,6 +60,7 @@ fn down_returns_none() {
         all_targets: false,
         args: Vec::new(),
         target_dir: None,
+        profile: None,
     };
     assert!(artificer::serve_try(&home, &mut req).is_none());
 }
@@ -101,6 +102,7 @@ fn daemon_check_hits_second() {
         all_targets: false,
         args: Vec::new(),
         target_dir: None,
+        profile: None,
     };
     let code = artificer::serve_try(&home, &mut req)
         .expect("daemon up")
@@ -156,6 +158,7 @@ fn a_daemon_from_an_older_install_is_retired() {
         all_targets: false,
         args: Vec::new(),
         target_dir: None,
+        profile: None,
     };
     drop(artificer::serve_try(&home, &mut req));
     assert_ne!(
@@ -204,6 +207,7 @@ fn changed_compiler_environment_is_refused() {
         all_targets: false,
         args: Vec::new(),
         target_dir: None,
+        profile: None,
     };
     let code = artificer::serve_try(&home, &mut req)
         .expect("daemon up")
@@ -215,6 +219,78 @@ fn changed_compiler_environment_is_refused() {
         artificer::serve_try(&home, &mut req).is_none(),
         "a daemon with a stale environment snapshot must not serve"
     );
+
+    artificer::serve_stop(&home).unwrap();
+    drop(worker.join());
+}
+
+#[test]
+fn a_served_build_returns_its_profile_to_the_caller() {
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join(format!("home-{n}"));
+    fs::create_dir_all(&home).unwrap();
+    enable_serve(&home);
+    let a = tmp.path().join("a");
+    write_lib(&a, "gadget");
+
+    let h = home.clone();
+    let worker = std::thread::spawn(move || {
+        drop(artificer::serve_listen(&h));
+    });
+    wait_ping(&home);
+
+    let mut req = artificer::ServeRequest {
+        token: String::new(),
+        op: "check".into(),
+        dir: a.clone(),
+        packages: Vec::new(),
+        json: false,
+        workspace: false,
+        all_features: false,
+        features: Vec::new(),
+        no_default: false,
+        meta_flags: Vec::new(),
+        release: false,
+        link: false,
+        no_run: false,
+        lib: false,
+        doc: false,
+        only: Vec::new(),
+        tests: false,
+        all_targets: false,
+        args: Vec::new(),
+        target_dir: None,
+        profile: None,
+    };
+    let recording = artificer::begin_profile(&["check".to_string()], &a);
+    let code = artificer::serve_try(&home, &mut req)
+        .expect("daemon up")
+        .unwrap();
+    assert_eq!(code, 0);
+    recording.finish(&home, false);
+
+    let shown = artificer::profile_command(
+        &home,
+        &artificer::ProfileCommand::Show {
+            id: None,
+            json: true,
+            trace: None,
+            html: None,
+        },
+    )
+    .unwrap();
+    let analysis: serde_json::Value = serde_json::from_str(&shown).unwrap();
+    assert_eq!(analysis["units"]["miss"], 1, "{analysis}");
+    assert_eq!(analysis["critical_path"][0]["name"], "gadget", "{analysis}");
+    let phases: Vec<&str> = analysis["phases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|phase| phase["phase"].as_str())
+        .collect();
+    assert!(phases.contains(&"serve"), "{phases:?}");
+    assert!(phases.contains(&"rustc"), "{phases:?}");
 
     artificer::serve_stop(&home).unwrap();
     drop(worker.join());

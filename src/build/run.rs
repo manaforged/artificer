@@ -93,10 +93,11 @@ fn execute(settings: &Settings, exe: &Path, args: &[String]) -> Result<i32> {
         line.push_str(arg);
     }
     crate::out::status(crate::out::Status::Running, format!("`{line}`"));
-    let status = settings
-        .exec_cmd(exe)
-        .args(args)
-        .status()
-        .with_context(|| format!("run {}", exe.display()))?;
+    let mut program = settings.exec_cmd(exe);
+    program.args(args);
+    let status = crate::profile::span(crate::profile::RunPhase::Run, || {
+        crate::profile::status(&mut program)
+    })
+    .with_context(|| format!("run {}", exe.display()))?;
     Ok(status.code().unwrap_or(1))
 }

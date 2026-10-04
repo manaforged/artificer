@@ -42,16 +42,48 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    handled(args, &args_os)
+}
+
+fn handled(args: Vec<String>, args_os: &[OsString]) -> ExitCode {
+    let recording = profiled(&args)
+        .then(|| artificer::begin_profile(&args, &env::current_dir().unwrap_or_default()));
     let result = match run(args) {
         Err(error) if error.is::<artificer::Unmodeled>() => Ok(fallback(error)),
         result => result,
     };
-    match result {
-        Ok(Dispatch::Fallback) if shim() => stock(&args_os).unwrap_or_else(failed),
-        Ok(Dispatch::Fallback) => ExitCode::from(2),
-        Ok(Dispatch::Completed(code)) => code,
-        Err(error) => failed(error),
+    let (code, broke) = settle(result, args_os);
+    if let Some(recording) = recording {
+        recording.finish(&artificer::default_home(), broke);
     }
+    code
+}
+
+fn settle(result: Result<Dispatch>, args_os: &[OsString]) -> (ExitCode, bool) {
+    match result {
+        Ok(Dispatch::Fallback) if shim() => (
+            artificer::profile_span(artificer::RunPhase::Fallback, || stock(args_os))
+                .unwrap_or_else(failed),
+            false,
+        ),
+        Ok(Dispatch::Fallback) => (ExitCode::from(2), false),
+        Ok(Dispatch::Completed(code)) => (code, false),
+        Err(error) => (failed(error), true),
+    }
+}
+
+fn profiled(args: &[String]) -> bool {
+    matches!(
+        help::subcommand(args),
+        Some((
+            help::Sub::Check
+                | help::Sub::Build
+                | help::Sub::Test
+                | help::Sub::Run
+                | help::Sub::Warm,
+            _
+        ))
+    )
 }
 
 const SHIM_REFRESHED: &str = "ARTIFICER_SHIM_REFRESHED";
@@ -196,6 +228,7 @@ fn store_tool(sub: help::Sub, rest: &[String]) -> Result<ExitCode> {
         Sub::WhyMiss => why_miss_cmd(rest),
         Sub::Remote => remote::remote_cmd(rest),
         Sub::Pull => remote::pull_cmd(rest),
+        Sub::Profile => profile::profile_cmd(rest),
         _ => why_fallback_cmd(rest),
     }
 }
@@ -212,6 +245,9 @@ fn parsed(args: &[String]) -> std::result::Result<(cli::BuildArgs, help::Sub), D
         }
     };
     let sub = help::lookup(&a.cmd).ok_or(Dispatch::Fallback)?;
+    if a.timings {
+        artificer::request_timings();
+    }
     artificer::set_quiet(a.quiet);
     artificer::set_trace(a.verbose);
     if let Some(choice) = a.color {
@@ -276,6 +312,8 @@ use clean::clean;
 use dispatch::{check, dev, request, run_target, test};
 #[path = "main/help.rs"]
 mod help;
+#[path = "main/profile.rs"]
+mod profile;
 #[path = "main/remote.rs"]
 mod remote;
 use commands::{

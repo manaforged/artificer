@@ -56,6 +56,8 @@ pub struct Request {
     pub all_targets: bool,
     #[serde(default)]
     pub args: Vec<String>,
+    #[serde(default)]
+    pub profile: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,6 +71,8 @@ pub struct Reply {
     pub stderr: String,
     #[serde(default)]
     pub err: String,
+    #[serde(default)]
+    pub profile: Option<crate::profile::Part>,
 }
 
 const IDLE: Duration = Duration::from_secs(3600);

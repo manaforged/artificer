@@ -158,7 +158,10 @@ impl Job<'_> {
     pub(super) fn run(&self, bin_dir: &Path, out_dir: &Path) -> Result<String> {
         let bin = bin_dir.join(bin_file());
         let mut ran = self.run_cmd(&bin, out_dir)?;
-        let ran = ran.output().context("run build.rs")?;
+        let ran = crate::profile::span(crate::profile::ProcessPhase::ScriptRun, || {
+            crate::profile::output(&mut ran)
+        })
+        .context("run build.rs")?;
         if !ran.status.success() {
             bail!(run_failure(self.pkg, &bin, &ran));
         }

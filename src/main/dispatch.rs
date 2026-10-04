@@ -24,6 +24,7 @@ pub(super) fn request(a: &cli::BuildArgs, sub: help::Sub, dir: PathBuf) -> artif
         tests: targets.tests,
         all_targets: targets.all,
         args: a.pass.clone(),
+        profile: None,
     }
 }
 

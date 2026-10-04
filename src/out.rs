@@ -90,6 +90,7 @@ pub enum Status {
     Finished,
     Running,
     Executable,
+    Timing,
 }
 
 impl Status {
@@ -100,6 +101,7 @@ impl Status {
             Self::Finished => "Finished",
             Self::Running => "Running",
             Self::Executable => "Executable",
+            Self::Timing => "Timing",
         }
     }
 }
@@ -167,19 +169,6 @@ pub fn current() -> Option<Sink> {
 
 pub fn attach(sink: Option<Sink>) {
     SINK.with(|s| *s.borrow_mut() = sink);
-}
-
-pub fn timed<T>(label: &str, f: impl FnOnce() -> T) -> T {
-    if std::env::var_os("ARTIFICER_TIMING").is_none() {
-        return f();
-    }
-    let start = std::time::Instant::now();
-    let r = f();
-    err(format!(
-        "artificer: time {label} {:.1}ms",
-        start.elapsed().as_secs_f64() * 1e3
-    ));
-    r
 }
 
 fn drain(m: &Mutex<Vec<u8>>) -> String {

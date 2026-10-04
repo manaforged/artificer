@@ -80,9 +80,11 @@ pub(crate) fn run_rustc(
     target: &cargo::Target,
     out: &Path,
 ) -> Result<()> {
-    crate::out::timed(&format!("rustc {}", pkg.name), || {
-        let _permit = crate::jobs::acquire(&sess.settings.home)?;
-        crate::jobs::isolate(cmd);
+    let _permit = crate::profile::span(crate::profile::UnitPhase::Permit, || {
+        crate::jobs::acquire(&sess.settings.home)
+    })?;
+    crate::jobs::isolate(cmd);
+    crate::profile::span(crate::profile::ProcessPhase::Rustc, || {
         run_rustc_inner(cmd, sess, pkg, target, out)
     })
 }
@@ -103,7 +105,17 @@ pub(crate) fn run_rustc_inner(
     let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
     cmd.stderr(file);
     sess.announce(pkg, TargetKind::of(target) == TargetKind::BuildScript);
-    let status = cmd.status().context("rustc")?;
+    let passes = crate::profile::passes_enabled();
+    if passes {
+        cmd.args(crate::profile::FLAGS);
+        cmd.env(crate::profile::BOOTSTRAP.0, crate::profile::BOOTSTRAP.1);
+    }
+    let status = crate::profile::status(cmd).context("rustc")?;
+    if passes {
+        crate::profile::note_passes(
+            crate::profile::harvest(&path).with_context(|| format!("read {}", path.display()))?,
+        );
+    }
     let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
     let errors = show(sess, pkg, target, &bytes);
     if !status.success() {

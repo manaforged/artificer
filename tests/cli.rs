@@ -138,6 +138,9 @@ fn tool_available(name: &str) -> bool {
 #[path = "cli/dispatch.rs"]
 mod dispatch;
 
+#[path = "cli/profile.rs"]
+mod profile;
+
 #[path = "cli/shim.rs"]
 mod shim_dispatch;
 

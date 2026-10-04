@@ -1,5 +1,6 @@
 use crate::cargo;
 use crate::compile::{self, Compiled, TestBin};
+use crate::profile::{PlannedUnit, Role};
 use crate::session::Session;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -98,7 +99,39 @@ fn scores(units: &[Unit], deps: &HashMap<Unit, Vec<Unit>>) -> HashMap<Unit, usiz
         .collect()
 }
 
+fn planned(
+    meta: &cargo::Metadata,
+    units: &[Unit],
+    deps: &HashMap<Unit, Vec<Unit>>,
+    order: &HashMap<Unit, usize>,
+) -> Vec<PlannedUnit> {
+    units
+        .iter()
+        .map(|unit| {
+            let (id, role) = match unit {
+                Unit::Pkg(id) => (id, Role::Package),
+                Unit::Extra(id) => (id, Role::Targets),
+            };
+            let (name, version) = cargo::package(meta, id).map_or_else(
+                |_| (id.clone(), String::new()),
+                |pkg| (pkg.name.clone(), pkg.version.clone()),
+            );
+            PlannedUnit {
+                package: id.clone(),
+                name,
+                version,
+                role,
+                deps: deps
+                    .get(unit)
+                    .map(|ds| ds.iter().filter_map(|d| order.get(d).copied()).collect())
+                    .unwrap_or_default(),
+            }
+        })
+        .collect()
+}
+
 fn run_units<T: Send>(
+    meta: &cargo::Metadata,
     units: Vec<Unit>,
     deps: HashMap<Unit, Vec<Unit>>,
     work: impl Fn(&Unit) -> Result<T> + Sync,
@@ -109,6 +142,8 @@ fn run_units<T: Send>(
         .enumerate()
         .map(|(i, u)| (u.clone(), i))
         .collect();
+    let base = crate::profile::current()
+        .and_then(|_| crate::profile::plan(planned(meta, &units, &deps, &order)));
     let state = Mutex::new(State {
         want: units.iter().cloned().collect(),
         remaining: units.iter().cloned().collect(),
@@ -123,14 +158,18 @@ fn run_units<T: Send>(
 
     std::thread::scope(|s| {
         let work = &work;
+        let order = &order;
         let mut joins = Vec::new();
-        for _ in 0..job_cap().min(count) {
+        for worker in 0..job_cap().min(count) {
             let sink = crate::out::current();
+            let recorder = crate::profile::current();
             let state = &state;
             let wake = &wake;
             let deps = &deps;
             joins.push(s.spawn(move || {
                 crate::out::attach(sink);
+                crate::profile::attach(recorder);
+                crate::profile::worker(worker);
                 loop {
                     let unit = {
                         let mut st = state.lock().expect("state");
@@ -149,7 +188,11 @@ fn run_units<T: Send>(
                             st = wake.wait(st).expect("state");
                         }
                     };
-                    let r = work(&unit);
+                    let index = base.and_then(|base| {
+                        let at = u32::try_from(*order.get(&unit)?).ok()?;
+                        Some(base.saturating_add(at))
+                    });
+                    let r = crate::profile::unit(index, || work(&unit));
                     let mut st = state.lock().expect("state");
                     st.in_flight -= 1;
                     match r {
@@ -189,7 +232,7 @@ pub fn compile_ids(
 ) -> Result<HashMap<String, Compiled>> {
     let (units, deps) = graph_and_extras(meta, ids, &[], false)?;
     sess.learn_links(meta);
-    let done = run_units(units, deps, |unit| match unit {
+    let done = run_units(meta, units, deps, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id),
         Unit::Extra(_) => unreachable!("no extras scheduled"),
     })?;
@@ -215,7 +258,7 @@ pub fn compile_ids_and_tests(
         Lib(Option<Compiled>),
         Tests(Vec<TestBin>),
     }
-    let done = run_units(units, deps, |unit| match unit {
+    let done = run_units(meta, units, deps, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id).map(Done::Lib),
         Unit::Extra(id) => compile::compile_tests(sess, meta, id, sel).map(Done::Tests),
     })?;
@@ -245,7 +288,7 @@ pub fn compile_ids_and_extras(
 ) -> Result<HashMap<String, Compiled>> {
     let (units, deps) = graph_and_extras(meta, ids, roots, sel.wants_dev())?;
     sess.learn_links(meta);
-    let done = run_units(units, deps, |unit| match unit {
+    let done = run_units(meta, units, deps, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id),
         Unit::Extra(id) => compile::check_extras(sess, meta, id, sel).map(|()| None),
     })?;
