@@ -100,19 +100,7 @@ pub fn spawn_pull(home: &Path) -> Result<()> {
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::from(log.try_clone()?));
     cmd.stderr(Stdio::from(log));
-    detach(&mut cmd);
+    super::detach(&mut cmd);
     cmd.spawn().context("spawn artificer pull")?;
     Ok(())
-}
-
-#[cfg(unix)]
-fn detach(cmd: &mut Command) {
-    use std::os::unix::process::CommandExt;
-    cmd.process_group(0);
-}
-
-#[cfg(windows)]
-fn detach(cmd: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    cmd.creation_flags(windows_sys::Win32::System::Threading::DETACHED_PROCESS);
 }

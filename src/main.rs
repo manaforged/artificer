@@ -230,6 +230,7 @@ fn store_tool(sub: help::Sub, rest: &[String]) -> Result<ExitCode> {
         Sub::WhyMiss => why_miss_cmd(rest),
         Sub::Remote => remote::remote_cmd(rest),
         Sub::Pull => remote::pull_cmd(rest),
+        Sub::Push => remote::push_cmd(rest),
         Sub::Profile => profile::profile_cmd(rest),
         _ => why_fallback_cmd(rest),
     }

@@ -56,4 +56,5 @@ pub(super) fn record_counts(
         started.elapsed().as_millis() as u64,
         None,
     );
+    crate::remote::push_built(home);
 }

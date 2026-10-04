@@ -69,6 +69,21 @@ pub(super) fn remote_cmd(args: &[String]) -> Result<ExitCode> {
     }
 }
 
+pub(super) fn push_cmd(args: &[String]) -> Result<ExitCode> {
+    let units = match args {
+        [] => None,
+        [flag, file] if flag == "--units" => Some(std::path::Path::new(file)),
+        _ => return Ok(help::usage(help::Sub::Push)),
+    };
+    let (location, report) = artificer::push(&artificer::default_home(), units)?;
+    println!(
+        "artificer: pushed {} unit(s), {:.1} MB to {location}",
+        report.units,
+        report.bytes as f64 / 1_048_576.0
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
 pub(super) fn pull_cmd(args: &[String]) -> Result<ExitCode> {
     if !args.is_empty() {
         return Ok(help::usage(help::Sub::Pull));

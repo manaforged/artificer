@@ -9,6 +9,10 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- `artificer push` sends the remote store the units it lacks. A build with
+  a remote store set pushes the units it compiled in the background, so
+  every machine that shares the store fills it; over SSH the remote host
+  adds them with `artificer import`.
 - rustc gets a job token pool that its build owns, as with Cargo, so its
   extra codegen and frontend threads run only on free cores; the pool is
   removed when the build ends.

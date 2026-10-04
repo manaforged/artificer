@@ -88,6 +88,7 @@ directly to see the reason.
 | artificer import DIR | Add missing units from an exported directory |
 | artificer remote [set LOCATION \| off] | Show, set, or clear the remote store. LOCATION is `HOST:/ABSOLUTE/PATH` over SSH, or an absolute directory |
 | artificer pull | Add missing complete units from the remote store |
+| artificer push [--units FILE] | Send the remote store the units it lacks; over SSH the remote host runs `artificer import`. Builds run it in the background for the units they compiled |
 | artificer enable / disable | Persist caching state for the selected store |
 | artificer install [--no-modify-path] [--remote LOCATION] | Put the launchers and recorded Cargo path in place and add the shim to PATH (shell profiles on macOS and Linux, the user PATH on Windows); `--no-modify-path` skips this; `--remote LOCATION` sets the remote store and starts the first pull in the background |
 | artificer uninstall [--purge] | Remove the launchers, recorded Cargo path, and the PATH entries install added; run `cargo uninstall artificer-build` when Cargo installed Artificer; `--purge` also deletes the cache |

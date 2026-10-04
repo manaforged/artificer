@@ -30,8 +30,11 @@ fn from_dir(home: &Path, dir: &Path, name: &str, slot: &Slot) -> Result<bool> {
     if crate::resolve_path(dir) == crate::resolve_path(home) {
         return Ok(false);
     }
-    let _hold = store::hold(dir, name)?;
     let from = Slot::new(dir, name);
+    if !from.hit() {
+        return Ok(false);
+    }
+    let _hold = store::hold(dir, name)?;
     if !from.hit() {
         return Ok(false);
     }
@@ -47,7 +50,7 @@ fn from_ssh(home: &Path, host: &str, path: &str, name: &str, slot: &Slot) -> Res
     fs::create_dir_all(&staging)?;
     let source = format!("{host}:{path}/units/{LAYOUT}/{name}/");
     let status = Command::new(RSYNC)
-        .args(["-a", "-z", "-e", &ssh_command()])
+        .args(["-a", "-z", "-e", &super::ssh_command()])
         .arg(&source)
         .arg(format!("{}/", staging.display()))
         .stdin(Stdio::null())
@@ -65,13 +68,4 @@ fn from_ssh(home: &Path, host: &str, path: &str, name: &str, slot: &Slot) -> Res
     let fetched = complete && slot.copy_from(&staging).is_ok() && slot.hit();
     drop(fs::remove_dir_all(&staging));
     Ok(fetched)
-}
-
-fn ssh_command() -> String {
-    let control = crate::home::control_home().join("ssh");
-    drop(fs::create_dir_all(&control));
-    format!(
-        "ssh -o BatchMode=yes -o ConnectTimeout=5 -o ControlMaster=auto -o ControlPersist=60 -o ControlPath={}/%C",
-        control.display()
-    )
 }

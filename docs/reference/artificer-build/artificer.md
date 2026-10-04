@@ -56,6 +56,7 @@
 | [`profiles`](#profiles) | fn |  |
 | [`pull`](#pull) | fn |  |
 | [`purge`](#purge) | fn |  |
+| [`push`](#push) | fn |  |
 | [`raise_open_file_limit`](#raise_open_file_limit) | fn |  |
 | [`ready`](#ready) | fn |  |
 | [`refresh_shim`](#refresh_shim) | fn |  |
@@ -633,6 +634,11 @@
 ### `purge`
 
 <pre>pub fn <a href="#purge">purge</a>(home: &amp;Path) -&gt; Result&lt;bool&gt;</pre>
+
+
+### `push`
+
+<pre>pub fn <a href="#push">push</a>(home: &amp;Path, units: Option&lt;&amp;Path&gt;) -&gt; Result&lt;(<a href="#location">Location</a>, <a href="#transferreport">TransferReport</a>)&gt;</pre>
 
 
 ### `raise_open_file_limit`

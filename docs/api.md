@@ -41,6 +41,7 @@ real Cargo. Named `artificer`, it accepts the commands below.
 | `artificer remote set LOCATION` | Set the remote store: `HOST:/ABSOLUTE/PATH` over SSH, or an absolute directory. A build then takes each unit it misses from the remote store before compiling it |
 | `artificer remote off` | Clear the remote store |
 | `artificer pull` | Add missing complete units from the remote store |
+| `artificer push [--units FILE]` | Send the remote store the complete units it lacks, or only the units named in FILE. A build with a remote store set runs it in the background for the units it compiled |
 | `artificer mods` | List compile modes |
 | `artificer mods on NAME`, `artificer mods off NAME` | Change one compile mode |
 | `artificer --help`, `-h` | Print the command list |

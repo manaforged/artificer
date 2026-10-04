@@ -93,6 +93,17 @@ fn a_moved_checkout_reuses_a_build_script_whose_objects_name_the_old_path() {
     assert_eq!(fs::read_to_string(tmp.path().join("runs")).unwrap(), "x");
 }
 
+fn fresh_home(tmp: &Path, root: &Path) -> PathBuf {
+    let fresh = tmp.join("fresh");
+    let claim = artificer(&fresh, root)
+        .args(["remote", "off"])
+        .output()
+        .unwrap();
+    assert!(claim.status.success());
+    fs::write(fresh.join("pull.stamp"), "").unwrap();
+    fresh
+}
+
 #[test]
 fn a_build_fetches_missing_units_from_the_remote_without_a_pull() {
     let tmp = tempfile::tempdir().unwrap();
@@ -100,13 +111,7 @@ fn a_build_fetches_missing_units_from_the_remote_without_a_pull() {
     script_project(&root, "fn main() {}\n");
     let builder = tmp.path().join("builder");
     build(&builder, &root, &tmp.path().join("builder-target"), &[]);
-    let fresh = tmp.path().join("fresh");
-    let claim = artificer(&fresh, &root)
-        .args(["remote", "off"])
-        .output()
-        .unwrap();
-    assert!(claim.status.success());
-    fs::write(fresh.join("pull.stamp"), "").unwrap();
+    let fresh = fresh_home(tmp.path(), &root);
     let out = artificer(&fresh, &root)
         .arg("build")
         .env("ARTIFICER_REMOTE", &builder)
@@ -119,4 +124,73 @@ fn a_build_fetches_missing_units_from_the_remote_without_a_pull() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert_eq!(misses(&fresh, &root), 0);
+}
+
+#[test]
+fn push_sends_the_remote_the_units_it_lacks() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("project");
+    script_project(&root, "fn main() {}\n");
+    let builder = tmp.path().join("builder");
+    build(&builder, &root, &tmp.path().join("builder-target"), &[]);
+    let shared = tmp.path().join("shared");
+    let out = artificer(&builder, &root)
+        .arg("push")
+        .env("ARTIFICER_REMOTE", &shared)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let fresh = fresh_home(tmp.path(), &root);
+    let out = artificer(&fresh, &root)
+        .arg("build")
+        .env("ARTIFICER_REMOTE", &shared)
+        .env("CARGO_TARGET_DIR", tmp.path().join("fresh-target"))
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(misses(&fresh, &root), 0);
+}
+
+#[test]
+fn a_build_pushes_the_units_it_compiled() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("project");
+    script_project(&root, "fn main() {}\n");
+    let builder = tmp.path().join("builder");
+    let shared = tmp.path().join("shared");
+    let out = artificer(&builder, &root)
+        .arg("build")
+        .env("ARTIFICER_REMOTE", &shared)
+        .env("CARGO_TARGET_DIR", tmp.path().join("builder-target"))
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let units = shared.join("units").join(artificer::LAYOUT);
+    let complete = || {
+        fs::read_dir(&units)
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.path().join("ok").is_file())
+                    .count()
+            })
+            .unwrap_or(0)
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while complete() < 3 && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert_eq!(complete(), 3, "the build pushed {} of 3 units", complete());
 }

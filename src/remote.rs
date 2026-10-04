@@ -123,5 +123,29 @@ pub(crate) fn pull_due(home: &Path) {
 
 mod fetch;
 mod pull;
+mod push;
 pub(crate) use fetch::fetch;
 pub use pull::{pull, spawn_pull};
+pub use push::push;
+pub(crate) use push::{note_built, push_built};
+
+fn ssh_command() -> String {
+    let control = crate::home::control_home().join("ssh");
+    drop(fs::create_dir_all(&control));
+    format!(
+        "ssh -o BatchMode=yes -o ConnectTimeout=5 -o ControlMaster=auto -o ControlPersist=60 -o ControlPath={}/%C",
+        control.display()
+    )
+}
+
+#[cfg(unix)]
+fn detach(cmd: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    cmd.process_group(0);
+}
+
+#[cfg(windows)]
+fn detach(cmd: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(windows_sys::Win32::System::Threading::DETACHED_PROCESS);
+}

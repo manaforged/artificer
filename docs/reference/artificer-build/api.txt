@@ -302,6 +302,7 @@ pub fn artificer::profile_span<T>(phase: impl core::convert::Into<artificer::Pha
 pub fn artificer::profiles(home: &std::path::Path, shell: core::option::Option<&std::path::Path>, zdotdir: core::option::Option<&std::path::Path>) -> alloc::vec::Vec<std::path::PathBuf>
 pub fn artificer::pull(home: &std::path::Path) -> anyhow::Result<(artificer::Location, artificer::TransferReport)>
 pub fn artificer::purge(home: &std::path::Path) -> core::io::error::Result<bool>
+pub fn artificer::push(home: &std::path::Path, units: core::option::Option<&std::path::Path>) -> anyhow::Result<(artificer::Location, artificer::TransferReport)>
 pub fn artificer::raise_open_file_limit() -> core::io::error::Result<()>
 pub fn artificer::ready(home: &std::path::Path) -> bool
 pub fn artificer::refresh_shim(running: &std::path::Path, control: &std::path::Path, cargo_home: &std::path::Path) -> anyhow::Result<bool>

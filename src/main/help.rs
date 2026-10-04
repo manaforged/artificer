@@ -23,6 +23,7 @@ pub(super) enum Sub {
     Mods,
     Remote,
     Pull,
+    Push,
     Profile,
 }
 
@@ -102,7 +103,7 @@ const GLOBAL: &[Opt] = &[
 ];
 const HELP_ONLY: &[Opt] = &[("-h, --help", "Print help")];
 
-const ENTRIES: [Entry; 22] = [
+const ENTRIES: [Entry; 23] = [
     Entry {
         sub: Sub::Check,
         name: "check",
@@ -294,6 +295,19 @@ const ENTRIES: [Entry; 22] = [
         summary: "Add missing units from the remote store",
         usage: "artificer pull",
         options: &[HELP_ONLY],
+    },
+    Entry {
+        sub: Sub::Push,
+        name: "push",
+        summary: "Send units the remote store lacks to it",
+        usage: "artificer push [--units FILE]",
+        options: &[
+            &[(
+                "--units <FILE>",
+                "Send only the units named in FILE, one per line",
+            )],
+            HELP_ONLY,
+        ],
     },
 ];
 

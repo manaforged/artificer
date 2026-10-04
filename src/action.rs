@@ -80,6 +80,7 @@ pub struct Action {
     lease: Arc<std::fs::File>,
     writing: std::cell::Cell<bool>,
     fetched: std::cell::Cell<bool>,
+    from_remote: std::cell::Cell<bool>,
     _hold: Hold,
 }
 
@@ -99,6 +100,7 @@ impl Action {
             lease,
             writing: std::cell::Cell::new(false),
             fetched: std::cell::Cell::new(false),
+            from_remote: std::cell::Cell::new(false),
             _hold: hold,
         })
     }
@@ -122,6 +124,7 @@ impl Action {
 
     fn fetch(&self) -> Result<bool> {
         if crate::remote::fetch(&self.home, &self.name, &self.slot)? {
+            self.from_remote.set(true);
             self.finish()?;
             return Ok(true);
         }
@@ -157,6 +160,9 @@ impl Action {
     }
 
     pub fn finish(&self) -> Result<()> {
+        if !self.from_remote.get() {
+            crate::remote::note_built(&self.home, &self.name);
+        }
         let Some(lineage) = &self.lineage else {
             return self.slot.mark();
         };

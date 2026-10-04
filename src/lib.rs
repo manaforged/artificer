@@ -68,7 +68,7 @@ pub use profile::{
     profile_command, request_timings, span as profile_span,
 };
 pub use remote::{
-    Location, PULL_EVERY, REMOTE_ENV, Source as RemoteSource, configured as remote, pull,
+    Location, PULL_EVERY, REMOTE_ENV, Source as RemoteSource, configured as remote, pull, push,
     set as set_remote, spawn_pull,
 };
 pub use schedule::set_jobs;
