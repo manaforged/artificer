@@ -31,143 +31,50 @@ pub struct Compiled {
     pub shipped: Vec<(String, PathBuf)>,
 }
 
+pub(crate) fn waits_for_link(sess: &Session, pkg: &Package) -> bool {
+    pkg.script_target().is_some()
+        || package::PackageUnit::new(sess, pkg).is_none_or(|unit| !unit.pipelines())
+}
+
+fn script_outcome(script: Option<&Script>) -> ScriptOutcome {
+    match script {
+        None => ScriptOutcome::None,
+        Some(s) if s.restored => ScriptOutcome::Restored,
+        Some(_) => ScriptOutcome::Ran,
+    }
+}
+
 pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<Option<Compiled>> {
     let pkg = cargo::package(meta, id)?;
     let node = cargo::node(meta, id)?;
-    let Some(lib) = pkg.lib_target().or_else(|| pkg.bin_target()) else {
+    let Some(unit) = package::PackageUnit::new(sess, pkg) else {
         return Ok(None);
     };
-    let features = &node.features;
-    let crate_name = lib.name.replace('-', "_");
-    let proc_macro = pkg.is_proc_macro();
-    let is_bin = lib.kind.iter().any(|k| k == "bin");
-    let kind = match (sess.needs_link(pkg), is_bin) {
-        (false, false) => "meta",
-        (false, true) => "meta-bin",
-        (true, true) => "bin",
-        (true, false) => "lib",
-    };
-    let types = if kind == "lib" {
-        artifact::link_types(lib, proc_macro)
-    } else {
-        Vec::new()
-    };
-    let lto_ok = kind == "bin"
-        || (!types.is_empty()
-            && types
-                .iter()
-                .all(|t| matches!(t.as_str(), "cdylib" | "staticlib" | "dylib")));
     let script = ensure_script(sess, pkg, node)?;
     let stamp = script.as_ref().map(|s| s.stamp.clone());
     let keyed = unit_key::unit_digest(
         sess,
         pkg,
         node,
-        kind,
-        features,
-        &types,
-        lto_ok,
+        unit.shape.name(),
+        &node.features,
+        &unit.types,
+        unit.lto_ok,
         stamp.as_deref(),
         false,
     )?;
-    let digest = keyed.digest;
-    let metadata = keyed.metadata;
-    let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &digest)?
-        .lineage(keyed.lineage);
-    let slot = &action.slot;
+    let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &keyed.digest)?
+        .lineage(keyed.lineage.clone());
     let out = action.out.clone();
-
-    let script_outcome = match &script {
-        None => ScriptOutcome::None,
-        Some(s) if s.restored => ScriptOutcome::Restored,
-        Some(_) => ScriptOutcome::Ran,
-    };
-    let mut cmd = sess.settings.rustc_cmd(pkg);
-    if sess.needs_link(pkg) {
-        cmd.arg("--emit=dep-info,metadata,link");
-        for kind in artifact::link_types(lib, proc_macro) {
-            cmd.arg("--crate-type").arg(kind);
-        }
-        if proc_macro {
-            cmd.arg("-C").arg("prefer-dynamic");
-        }
-    } else {
-        cmd.arg("--emit=dep-info,metadata");
-        cmd.arg("--crate-type")
-            .arg(if lib.kind.iter().any(|kind| kind == "bin") {
-                "bin"
-            } else {
-                "lib"
-            });
-    }
-    let mut cmd = invoke::rustc_base(
-        cmd,
-        sess,
-        pkg,
-        lib,
-        sess.needs_link(pkg),
-        features,
-        &out,
-        script.as_ref(),
-        lto_ok,
-    );
-    cmd.arg("-C").arg(format!("metadata={metadata}"));
-    cmd.arg("-C").arg(format!("extra-filename=-{digest}"));
-    invoke::add_externs(
-        &mut cmd,
-        sess,
-        node,
-        invoke::ExternSet::Lib,
-        kind.starts_with("meta"),
-    )?;
-    if kind == "bin" || proc_macro {
-        invoke::add_natives(&mut cmd, sess, &pkg.id, false);
-    }
-    if proc_macro {
-        cmd.arg("--extern").arg("proc_macro");
-    }
-    cmd.arg(&lib.src_path);
-    invoke::primary_env(&mut cmd, sess, pkg);
-    let manifest = unit_key::dep_manifest(sess, node, kind.starts_with("test-"), None)?;
-    let mut hit = slot.hit();
-    if hit
-        && (!unit_key::deps_match(&out, &manifest)
-            || !crate::inputs::matches(&sess.settings.home, &out, pkg.root(), &cmd))
-    {
-        action.invalidate()?;
-        hit = false;
-    }
-    let rustc = if hit {
-        invoke::replay(sess, pkg, lib, &out);
-        RustcOutcome::Restored
-    } else {
-        action.prepare()?;
-        std::fs::create_dir_all(&out)?;
-        invoke::note_rustc(&sess.settings.home);
-        invoke::run_rustc(&mut cmd, sess, pkg, lib, &out)?;
-        std::fs::write(out.join(unit_key::DEPS_FILE), &manifest)?;
-        crate::profile::span(crate::profile::UnitPhase::Publish, || action.finish())?;
-        RustcOutcome::Ran
-    };
-
-    let path = artifact::find_artifact(&out, &crate_name, proc_macro, &digest, kind == "meta")?;
-    let rmeta = match path.extension().and_then(|e| e.to_str()) {
-        Some("rlib") => {
-            let sibling = path.with_extension("rmeta");
-            sibling.is_file().then_some(sibling)
-        }
-        _ => None,
-    };
-    let art = Artifact {
-        crate_name,
-        path,
-        rmeta,
-        proc_macro,
-    };
+    let mut cmd = unit.command(node, &out, script.as_ref(), &keyed)?;
+    let manifest = unit_key::dep_manifest(sess, node, false, None)?;
+    let early = unit.early(&out, &keyed.digest);
+    let rustc = unit.rustc(&action, &mut cmd, &manifest, early.as_ref())?;
+    let art = unit.artifact(&out, &keyed.digest)?;
     sess.put(id.to_string(), art.clone());
     sess.retain(action.lease()?);
     let shipped = if sess.ship.contains(&pkg.id) {
-        ship_outputs(sess, pkg, node, lib, &out, &digest, &art)?
+        ship_outputs(sess, pkg, node, unit.lib, &out, &keyed.digest, &art)?
     } else {
         Vec::new()
     };
@@ -175,7 +82,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
         _leases: std::sync::Arc::clone(&sess.leases),
         artifact: art,
         rustc,
-        script: script_outcome,
+        script: script_outcome(script.as_ref()),
         shipped,
     }))
 }
@@ -234,6 +141,7 @@ fn ensure_script(sess: &Session, pkg: &Package, node: &cargo::Node) -> Result<Op
 }
 
 mod extras;
+mod package;
 pub use extras::{check_extras, doctest_cmd};
 
 mod executables;

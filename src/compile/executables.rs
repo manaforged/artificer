@@ -157,7 +157,7 @@ fn compile_exe(
     action.prepare()?;
     std::fs::create_dir_all(&out)?;
     invoke::note_rustc(&sess.settings.home);
-    invoke::run_rustc(&mut cmd, sess, pkg, target, &out)?;
+    invoke::run_rustc(&mut cmd, sess, pkg, target, &out, None)?;
     std::fs::write(out.join(unit_key::DEPS_FILE), &manifest)?;
     if !exe.is_file() {
         bail!("no {label} exe {crate_name} in {}", out.display());

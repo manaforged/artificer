@@ -11,6 +11,8 @@ fn unit(name: &str, deps: &[u32], start_ms: u64, end_ms: u64) -> UnitRecord {
         deps: deps.to_vec(),
         start_us: Some(start_ms * 1000),
         end_us: Some(end_ms * 1000),
+        meta_us: None,
+        links: false,
         worker: Some(0),
         outcome: Some(Outcome::Miss),
     }
@@ -109,4 +111,32 @@ fn utc_formats_unix_milliseconds_across_leap_days_and_centuries() {
     assert_eq!(utc(951_782_400_123), "2000-02-29 00:00:00 UTC");
     assert_eq!(utc(1_759_600_000_999), "2025-10-04 17:46:40 UTC");
     assert_eq!(utc(4_102_444_800_000), "2100-01-01 00:00:00 UTC");
+}
+
+#[test]
+fn a_library_is_ready_at_its_dependency_metadata_and_a_linker_at_its_end() {
+    let mut base = unit("base", &[], 0, 1000);
+    base.meta_us = Some(200_000);
+    let user = unit("user", &[0], 250, 400);
+    let mut bin = unit("bin", &[0, 1], 1000, 1100);
+    bin.links = true;
+    let part = Part {
+        units: vec![base, user, bin],
+        spans: Vec::new(),
+        target_dir: None,
+    };
+    let analysis = analyze(&profile(part, 1100));
+    let waits: Vec<(&str, u64)> = analysis
+        .critical_path
+        .iter()
+        .map(|step| (step.name.as_str(), step.wait_ms))
+        .collect();
+    assert_eq!(waits, [("base", 0), ("bin", 0)]);
+    let user = analysis
+        .top_units
+        .iter()
+        .find(|unit| unit.name == "user")
+        .map(|unit| unit.wait_ms);
+    assert_eq!(user, Some(50));
+    assert_eq!(analysis.critical_ms, 1100);
 }

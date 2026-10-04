@@ -176,7 +176,7 @@ impl TestUnit<'_> {
         action.prepare()?;
         std::fs::create_dir_all(out)?;
         invoke::note_rustc(&sess.settings.home);
-        invoke::run_rustc(cmd, sess, pkg, self.target, out)?;
+        invoke::run_rustc(cmd, sess, pkg, self.target, out, None)?;
         std::fs::write(out.join(unit_key::DEPS_FILE), manifest)?;
         if !exe.is_file() {
             bail!("no test exe {} in {}", exe.display(), out.display());

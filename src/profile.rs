@@ -22,11 +22,11 @@ pub(crate) use model::{US_PER_MS, label, ms};
 pub(crate) use passes::{BOOTSTRAP, FLAGS, harvest};
 pub use phase::{Phase, ProcessPhase, RunPhase, SetupPhase, Stage, UnitPhase, WrapperPhase};
 pub(crate) use record::{
-    PlannedUnit, attach, capture, current, fallback, id, merge, note_passes, note_target, plan,
-    unit, worker,
+    MetaMark, PlannedUnit, attach, capture, current, fallback, id, merge, meta_mark, note_passes,
+    note_target, plan, unit, worker,
 };
 pub use record::{Recording, begin, request_timings, span};
-pub(crate) use usage::{output, status};
+pub(crate) use usage::{output, status, status_lines};
 
 pub(crate) const PASSES_VAR: &str = "ARTIFICER_PASSES";
 pub(crate) const TIMING_VAR: &str = "ARTIFICER_TIMING";

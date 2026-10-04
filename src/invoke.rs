@@ -1,7 +1,7 @@
 use crate::cargo::{self, Package};
 use crate::platform::env_path;
 use crate::script::{self, Script};
-use crate::session::Session;
+use crate::session::{Artifact, Session};
 use crate::settings::{Settings, profile_for};
 use anyhow::{Context, Result, bail};
 use serde_json::{Map, Value};
@@ -247,4 +247,4 @@ pub(crate) fn set_target_tmpdir(cmd: &mut Command, sess: &Session, enabled: bool
 }
 
 mod diagnostics;
-pub(crate) use diagnostics::{note_rustc, primary_env, replay, run_rustc};
+pub(crate) use diagnostics::{Early, note_rustc, primary_env, replay, run_rustc};

@@ -47,19 +47,71 @@ fn source_prefix(sess: &Session, pkg: &Package) -> String {
     }
 }
 
+pub(crate) struct Early {
+    pub(crate) rmeta: PathBuf,
+    pub(crate) artifact: Artifact,
+}
+
+#[derive(serde::Deserialize)]
+struct Notice {
+    artifact: PathBuf,
+    emit: String,
+}
+
+const ARTIFACT_NOTICE: &[u8] = b"{\"$message_type\":\"artifact\"";
+const METADATA_EMIT: &str = "metadata";
+
+fn metadata_notice(line: &[u8]) -> Option<Option<PathBuf>> {
+    if !line.starts_with(ARTIFACT_NOTICE) {
+        return None;
+    }
+    let notice: Notice = serde_json::from_slice(line).ok()?;
+    Some((notice.emit == METADATA_EMIT).then_some(notice.artifact))
+}
+
+fn stream(
+    cmd: &mut Command,
+    sess: &Session,
+    pkg: &Package,
+    file: File,
+    early: Option<&Early>,
+) -> std::io::Result<std::process::ExitStatus> {
+    use std::io::Write;
+    let signal = early.and_then(|_| crate::schedule::signal());
+    let mut writer = std::io::BufWriter::new(file);
+    let status = crate::profile::status_lines(cmd, |line| {
+        let Some(notice) = metadata_notice(line) else {
+            writer.write_all(line)?;
+            return writer.write_all(b"\n");
+        };
+        if let (Some(early), Some(emitted)) = (early, notice)
+            && emitted.file_name() == early.rmeta.file_name()
+        {
+            sess.put(pkg.id.clone(), early.artifact.clone());
+            if let Some(signal) = &signal {
+                signal.metadata_ready();
+            }
+        }
+        Ok(())
+    })?;
+    writer.flush()?;
+    Ok(status)
+}
+
 pub(crate) fn run_rustc(
     cmd: &mut Command,
     sess: &Session,
     pkg: &Package,
     target: &cargo::Target,
     out: &Path,
+    early: Option<&Early>,
 ) -> Result<()> {
     let _permit = crate::profile::span(crate::profile::UnitPhase::Permit, || {
         crate::jobs::acquire(&sess.settings.home)
     })?;
     crate::jobs::isolate(cmd);
     crate::profile::span(crate::profile::ProcessPhase::Rustc, || {
-        run_rustc_inner(cmd, sess, pkg, target, out)
+        run_rustc_inner(cmd, sess, pkg, target, out, early)
     })
 }
 
@@ -69,22 +121,25 @@ pub(crate) fn run_rustc_inner(
     pkg: &Package,
     target: &cargo::Target,
     out: &Path,
+    early: Option<&Early>,
 ) -> Result<()> {
     primary_env(cmd, sess, pkg);
-    cmd.args(["--error-format=json", "--json=diagnostic-rendered-ansi"]);
+    cmd.args([
+        "--error-format=json",
+        "--json=diagnostic-rendered-ansi,artifacts",
+    ]);
     if std::env::var_os("ARTIFICER_TRACE").is_some() || crate::out::trace() {
         eprintln!("ARTIFICER_CMD {}: {:?}", pkg.name, cmd);
     }
     let path = out.join(DIAGNOSTICS);
     let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
-    cmd.stderr(file);
     sess.announce(pkg, TargetKind::of(target) == TargetKind::BuildScript);
     let passes = crate::profile::passes_enabled();
     if passes {
         cmd.args(crate::profile::FLAGS);
         cmd.env(crate::profile::BOOTSTRAP.0, crate::profile::BOOTSTRAP.1);
     }
-    let status = crate::profile::status(cmd).context("rustc")?;
+    let status = stream(cmd, sess, pkg, file, early).context("rustc")?;
     if passes {
         crate::profile::note_passes(
             crate::profile::harvest(&path).with_context(|| format!("read {}", path.display()))?,

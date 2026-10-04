@@ -80,8 +80,8 @@ fn a_build_profile_follows_the_dependency_chain_and_cache_outcomes() {
     let steps = cold["critical_path"].as_array().unwrap();
     for pair in steps.windows(2) {
         assert!(
-            pair[1]["start_ms"].as_u64() >= pair[0]["end_ms"].as_u64(),
-            "a dependent started before its dependency ended: {pair:?}"
+            pair[1]["start_ms"].as_u64() >= pair[0]["start_ms"].as_u64(),
+            "a dependent started before its dependency: {pair:?}"
         );
     }
     assert!(cold["cpu_ms"].as_u64().unwrap() > 0, "{cold}");

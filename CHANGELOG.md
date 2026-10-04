@@ -9,6 +9,10 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- A library starts compiling once its dependencies have written their
+  metadata, as with Cargo's pipelining; binaries, tests, proc macros, and
+  packages with build scripts still wait for every dependency to finish.
+  Build profiles record each unit's metadata time.
 - Artificer raises its open-file limit at startup, as Cargo does. A cold
   build of a large workspace on macOS stopped with "Too many open files".
 - A test target with `harness = false` runs its own `main` again. Artificer

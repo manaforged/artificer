@@ -23,9 +23,12 @@ The report has these sections. Empty sections are left out.
   the time after the last unit ended, such as linking or running tests.
 - **Critical path.** The chain of dependent units that ended last. The
   build cannot finish before this chain does. Each step shows when it
-  started, how long it ran, and its wait: the time between its last
-  dependency finishing and the step starting. A long wait means the unit
-  was ready but no worker was free.
+  started, how long it ran, and its wait: the time between the step
+  becoming ready and starting. A library is ready once its dependencies
+  have written their metadata, so it can start while they still generate
+  code; a unit that links, such as a binary or a test, is ready once its
+  dependencies finish. A long wait means the unit was ready but no worker
+  was free.
 - **Where the time went.** Totals per phase, such as `rustc`, `key`, and
   `publish`. Artificer's own setup phases, such as `metadata` and
   `feature-probe`, are in a separate group.

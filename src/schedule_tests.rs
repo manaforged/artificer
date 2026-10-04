@@ -11,17 +11,12 @@ fn extra(id: &str) -> Unit {
     Unit::Extra(id.to_string())
 }
 
-fn state<T>(ids: &[Unit], deps: &HashMap<Unit, Vec<Unit>>) -> State<T> {
-    State {
-        want: ids.iter().cloned().collect(),
-        remaining: ids.iter().cloned().collect(),
-        done: HashSet::new(),
-        in_flight: 0,
-        out: Vec::new(),
-        failed: Vec::new(),
-        reported: false,
-        score: scores(ids, deps),
-    }
+fn ready(units: &[Unit], deps: &HashMap<Unit, Vec<Unit>>, links: &[Unit]) -> Ready {
+    Ready::new(&Plan {
+        units: units.to_vec(),
+        deps: deps.clone(),
+        links: links.iter().cloned().collect(),
+    })
 }
 
 #[test]
@@ -38,15 +33,15 @@ fn configured_job_cap_has_a_floor() {
 
 #[test]
 fn pick_waits_for_in_scope_deps_only() {
-    let mut state: State<()> = state(&[pkg("a"), pkg("b")], &HashMap::new());
     let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
     deps.insert(pkg("a"), vec![pkg("b")]);
     deps.insert(pkg("b"), vec![pkg("outside")]);
-    assert_eq!(state.pick(&deps), Some(pkg("b")));
-    assert!(state.pick(&deps).is_none());
+    let mut state = ready(&[pkg("a"), pkg("b")], &deps, &[]);
+    assert_eq!(state.pick(), Some(pkg("b")));
+    assert!(state.pick().is_none());
     state.done.insert(pkg("b"));
     state.in_flight = 0;
-    assert_eq!(state.pick(&deps), Some(pkg("a")));
+    assert_eq!(state.pick(), Some(pkg("a")));
 }
 
 #[test]
@@ -55,12 +50,12 @@ fn spine_beats_leaves() {
     let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
     deps.insert(pkg("a"), vec![pkg("b")]);
     deps.insert(pkg("b"), vec![pkg("c")]);
-    let score = scores(&ids, &deps);
+    let score = plan::scores(&ids, &deps);
     assert_eq!(score[&pkg("c")], 2);
     assert_eq!(score[&pkg("b")], 1);
     assert_eq!(score[&pkg("l1")], 0);
-    let mut state: State<()> = state(&ids, &deps);
-    assert_eq!(state.pick(&deps), Some(pkg("c")), "spine first");
+    let mut state = ready(&ids, &deps, &[]);
+    assert_eq!(state.pick(), Some(pkg("c")), "spine first");
 }
 
 #[test]
@@ -69,12 +64,43 @@ fn extras_wait_for_their_package_and_deps() {
     let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
     deps.insert(pkg("root"), vec![pkg("dep")]);
     deps.insert(extra("root"), vec![pkg("dep"), pkg("root")]);
-    let mut state: State<()> = state(&ids, &deps);
-    assert_eq!(state.pick(&deps), Some(pkg("dep")), "dep first");
+    let mut state = ready(&ids, &deps, &[extra("root")]);
+    assert_eq!(state.pick(), Some(pkg("dep")), "dep first");
     state.done.insert(pkg("dep"));
     state.in_flight = 0;
-    assert_eq!(state.pick(&deps), Some(pkg("root")), "then the lib");
+    assert_eq!(state.pick(), Some(pkg("root")), "then the lib");
     state.done.insert(pkg("root"));
     state.in_flight = 0;
-    assert_eq!(state.pick(&deps), Some(extra("root")), "harness last");
+    assert_eq!(state.pick(), Some(extra("root")), "harness last");
+}
+
+#[test]
+fn a_library_starts_once_its_dependency_has_metadata() {
+    let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
+    deps.insert(pkg("user"), vec![pkg("base")]);
+    let mut state = ready(&[pkg("base"), pkg("user")], &deps, &[]);
+    assert_eq!(state.pick(), Some(pkg("base")));
+    assert!(state.pick().is_none(), "no metadata yet");
+    state.meta.insert(pkg("base"));
+    assert_eq!(
+        state.pick(),
+        Some(pkg("user")),
+        "started before base finished"
+    );
+}
+
+#[test]
+fn a_linking_unit_waits_for_every_transitive_dependency() {
+    let ids = vec![pkg("a"), pkg("b"), pkg("bin")];
+    let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
+    deps.insert(pkg("b"), vec![pkg("a")]);
+    deps.insert(pkg("bin"), vec![pkg("b")]);
+    let mut state = ready(&ids, &deps, &[pkg("bin")]);
+    state.remaining.remove(&pkg("a"));
+    state.remaining.remove(&pkg("b"));
+    state.meta.insert(pkg("a"));
+    state.done.insert(pkg("b"));
+    assert!(state.pick().is_none(), "a has only metadata");
+    state.done.insert(pkg("a"));
+    assert_eq!(state.pick(), Some(pkg("bin")));
 }

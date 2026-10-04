@@ -153,12 +153,20 @@ fn costs(profile: &Profile) -> Costs {
     Costs { cpu, rss }
 }
 
+fn available(dep: &UnitRecord, links: bool) -> Option<u64> {
+    if links {
+        dep.end_us
+    } else {
+        dep.meta_us.or(dep.end_us)
+    }
+}
+
 fn ready_us(profile: &Profile, unit: &UnitRecord, origin: u64) -> u64 {
     unit.deps
         .iter()
         .filter_map(|dep| usize::try_from(*dep).ok())
         .filter_map(|dep| profile.units.get(dep))
-        .filter_map(|dep| dep.end_us)
+        .filter_map(|dep| available(dep, unit.links))
         .max()
         .unwrap_or(origin)
 }
@@ -210,11 +218,11 @@ pub(crate) fn critical_path(profile: &Profile) -> Vec<u32> {
             .iter()
             .filter_map(|dep| usize::try_from(*dep).ok())
             .filter_map(|dep| {
-                profile
+                let at = profile
                     .units
                     .get(dep)
-                    .and_then(|d| d.end_us)
-                    .map(|end| (end, dep))
+                    .and_then(|d| available(d, unit.links))?;
+                Some((at, dep))
             })
             .max()
             .map(|(_, dep)| dep);
@@ -292,6 +300,13 @@ fn result(profile: &Profile) -> BuildResult {
     }
 }
 
+fn span(path: &[UnitTime]) -> u64 {
+    match (path.first(), path.last()) {
+        (Some(first), Some(last)) => (last.end_ms + first.wait_ms).saturating_sub(first.start_ms),
+        _ => 0,
+    }
+}
+
 fn all_times(profile: &Profile, costs: &Costs, origin: u64) -> Vec<UnitTime> {
     (0..profile.units.len())
         .filter_map(|unit| unit_time(profile, costs, unit, origin))
@@ -333,10 +348,7 @@ pub(crate) fn analyze(profile: &Profile) -> Analysis {
         units: counts(profile),
         setup_ms: ms(origin.min(profile.wall_us)),
         tail_ms: ms(last_end.map_or(0, |end| profile.wall_us.saturating_sub(end))),
-        critical_ms: path
-            .iter()
-            .map(|step| step.duration_ms + step.wait_ms)
-            .sum(),
+        critical_ms: span(&path),
         critical_path: path,
         top_units: top,
         parallelism: parallelism(profile, &segments),

@@ -1,16 +1,14 @@
 use crate::cargo;
 use crate::compile::{self, Compiled, TestBin};
-use crate::profile::{PlannedUnit, Role};
 use crate::session::Session;
 use anyhow::Result;
+use plan::{Plan, Waits};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 const WAITING: &str = "build failed, waiting for other jobs to finish...";
 
 pub type CompiledTests = (HashMap<String, Compiled>, HashMap<String, Vec<TestBin>>);
-
-type Graph = (Vec<Unit>, HashMap<Unit, Vec<Unit>>);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Unit {
@@ -18,18 +16,33 @@ pub(crate) enum Unit {
     Extra(String),
 }
 
-struct State<T> {
+struct Ready {
     want: HashSet<Unit>,
     remaining: HashSet<Unit>,
     done: HashSet<Unit>,
+    meta: HashSet<Unit>,
     in_flight: usize,
-    out: Vec<(Unit, T)>,
     failed: Vec<anyhow::Error>,
     reported: bool,
     score: HashMap<Unit, usize>,
+    waits: Waits,
 }
 
-impl<T> State<T> {
+impl Ready {
+    fn new(plan: &Plan) -> Self {
+        Self {
+            want: plan.units.iter().cloned().collect(),
+            remaining: plan.units.iter().cloned().collect(),
+            done: HashSet::new(),
+            meta: HashSet::new(),
+            in_flight: 0,
+            failed: Vec::new(),
+            reported: false,
+            score: plan::scores(&plan.units, &plan.deps),
+            waits: plan::waits(plan),
+        }
+    }
+
     fn fail(&mut self, error: anyhow::Error) {
         if !error.is::<cargo::Unmodeled>() {
             let first = !self.reported;
@@ -44,16 +57,29 @@ impl<T> State<T> {
         self.failed.push(error);
     }
 
-    fn pick(&mut self, deps: &HashMap<Unit, Vec<Unit>>) -> Option<Unit> {
+    fn has(&self, dep: &Unit, full: bool) -> bool {
+        !self.want.contains(dep) || self.done.contains(dep) || (!full && self.meta.contains(dep))
+    }
+
+    fn startable(&self, unit: &Unit) -> bool {
+        let meta = self
+            .waits
+            .meta
+            .get(unit)
+            .is_none_or(|deps| deps.iter().all(|dep| self.has(dep, false)));
+        let full = self
+            .waits
+            .full
+            .get(unit)
+            .is_none_or(|deps| deps.iter().all(|dep| self.has(dep, true)));
+        meta && full
+    }
+
+    fn pick(&mut self) -> Option<Unit> {
         let id = self
             .remaining
             .iter()
-            .filter(|id| {
-                deps.get(*id).is_none_or(|d| {
-                    d.iter()
-                        .all(|dep| self.done.contains(dep) || !self.want.contains(dep))
-                })
-            })
+            .filter(|id| self.startable(id))
             .max_by_key(|id| self.score.get(*id).copied().unwrap_or(0))
             .cloned()?;
         self.remaining.remove(&id);
@@ -62,165 +88,117 @@ impl<T> State<T> {
     }
 }
 
-fn scores(units: &[Unit], deps: &HashMap<Unit, Vec<Unit>>) -> HashMap<Unit, usize> {
-    let want: HashSet<&Unit> = units.iter().collect();
-    let mut waiters: HashMap<&Unit, Vec<&Unit>> = HashMap::new();
-    for id in units {
-        if let Some(ds) = deps.get(id) {
-            for d in ds.iter().filter(|d| want.contains(d)) {
-                waiters.entry(d).or_default().push(id);
-            }
-        }
-    }
-    fn reach<'a>(
-        id: &'a Unit,
-        waiters: &HashMap<&'a Unit, Vec<&'a Unit>>,
-        memo: &mut HashMap<&'a Unit, HashSet<&'a Unit>>,
-    ) -> HashSet<&'a Unit> {
-        if let Some(hit) = memo.get(id) {
-            return hit.clone();
-        }
-        let mut all = HashSet::new();
-        memo.insert(id, HashSet::new());
-        for w in waiters.get(id).map(Vec::as_slice).unwrap_or_default() {
-            all.insert(*w);
-            all.extend(reach(w, waiters, memo));
-        }
-        memo.insert(id, all.clone());
-        all
-    }
-    let mut memo = HashMap::new();
-    units
-        .iter()
-        .map(|id| {
-            let n = reach(id, &waiters, &mut memo).len();
-            (id.clone(), n)
-        })
-        .collect()
+struct Board {
+    ready: Mutex<Ready>,
+    wake: Condvar,
 }
 
-fn planned(
-    meta: &cargo::Metadata,
-    units: &[Unit],
-    deps: &HashMap<Unit, Vec<Unit>>,
-    order: &HashMap<Unit, usize>,
-) -> Vec<PlannedUnit> {
-    units
-        .iter()
-        .map(|unit| {
-            let (id, role) = match unit {
-                Unit::Pkg(id) => (id, Role::Package),
-                Unit::Extra(id) => (id, Role::Targets),
-            };
-            let (name, version) = cargo::package(meta, id).map_or_else(
-                |_| (id.clone(), String::new()),
-                |pkg| (pkg.name.clone(), pkg.version.clone()),
-            );
-            PlannedUnit {
-                package: id.clone(),
-                name,
-                version,
-                role,
-                deps: deps
-                    .get(unit)
-                    .map(|ds| ds.iter().filter_map(|d| order.get(d).copied()).collect())
-                    .unwrap_or_default(),
+impl Board {
+    fn lock(&self) -> MutexGuard<'_, Ready> {
+        self.ready.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn metadata(&self, unit: &Unit) {
+        self.lock().meta.insert(unit.clone());
+        self.wake.notify_all();
+    }
+
+    fn next(&self) -> Option<Unit> {
+        let mut ready = self.lock();
+        loop {
+            if !ready.failed.is_empty() || ready.remaining.is_empty() {
+                return None;
             }
-        })
-        .collect()
+            if let Some(unit) = ready.pick() {
+                return Some(unit);
+            }
+            if ready.in_flight == 0 {
+                ready.fail(anyhow::anyhow!("cycle in compile graph"));
+                self.wake.notify_all();
+                return None;
+            }
+            ready = self
+                .wake
+                .wait(ready)
+                .unwrap_or_else(PoisonError::into_inner);
+        }
+    }
+
+    fn finish(&self, unit: Unit, failure: Option<anyhow::Error>) {
+        let mut ready = self.lock();
+        ready.in_flight -= 1;
+        match failure {
+            None => {
+                ready.done.insert(unit);
+            }
+            Some(error) => ready.fail(error),
+        }
+        self.wake.notify_all();
+    }
 }
 
 fn run_units<T: Send>(
     meta: &cargo::Metadata,
-    units: Vec<Unit>,
-    deps: HashMap<Unit, Vec<Unit>>,
+    plan: Plan,
     work: impl Fn(&Unit) -> Result<T> + Sync,
 ) -> Result<Vec<(Unit, T)>> {
-    let count = units.len();
-    let order: HashMap<Unit, usize> = units
+    let count = plan.units.len();
+    let order: HashMap<Unit, usize> = plan
+        .units
         .iter()
         .enumerate()
         .map(|(i, u)| (u.clone(), i))
         .collect();
     let base = crate::profile::current()
-        .and_then(|_| crate::profile::plan(planned(meta, &units, &deps, &order)));
-    let state = Mutex::new(State {
-        want: units.iter().cloned().collect(),
-        remaining: units.iter().cloned().collect(),
-        done: HashSet::new(),
-        in_flight: 0,
-        out: Vec::new(),
-        failed: Vec::new(),
-        reported: false,
-        score: scores(&units, &deps),
+        .and_then(|_| crate::profile::plan(plan::planned(meta, &plan, &order)));
+    let board = Arc::new(Board {
+        ready: Mutex::new(Ready::new(&plan)),
+        wake: Condvar::new(),
     });
-    let wake = Condvar::new();
-
+    let outputs: Mutex<Vec<(Unit, T)>> = Mutex::new(Vec::new());
     std::thread::scope(|s| {
-        let work = &work;
-        let order = &order;
-        let mut joins = Vec::new();
         for worker in 0..job_cap().min(count) {
             let sink = crate::out::current();
             let recorder = crate::profile::current();
-            let state = &state;
-            let wake = &wake;
-            let deps = &deps;
-            joins.push(s.spawn(move || {
+            let board = Arc::clone(&board);
+            let (work, order, outputs) = (&work, &order, &outputs);
+            s.spawn(move || {
                 crate::out::attach(sink);
                 crate::profile::attach(recorder);
                 crate::profile::worker(worker);
-                loop {
-                    let unit = {
-                        let mut st = state.lock().expect("state");
-                        loop {
-                            if !st.failed.is_empty() || st.remaining.is_empty() {
-                                return;
-                            }
-                            if let Some(unit) = st.pick(deps) {
-                                break unit;
-                            }
-                            if st.in_flight == 0 {
-                                st.fail(anyhow::anyhow!("cycle in compile graph"));
-                                wake.notify_all();
-                                return;
-                            }
-                            st = wake.wait(st).expect("state");
-                        }
-                    };
+                while let Some(unit) = board.next() {
                     let index = base.and_then(|base| {
                         let at = u32::try_from(*order.get(&unit)?).ok()?;
                         Some(base.saturating_add(at))
                     });
-                    let r = crate::profile::unit(index, || work(&unit));
-                    let mut st = state.lock().expect("state");
-                    st.in_flight -= 1;
-                    match r {
+                    let result = crate::profile::unit(index, || {
+                        ready::with(Arc::clone(&board), &unit, || work(&unit))
+                    });
+                    match result {
                         Ok(value) => {
-                            st.done.insert(unit.clone());
-                            st.out.push((unit, value));
+                            outputs
+                                .lock()
+                                .unwrap_or_else(PoisonError::into_inner)
+                                .push((unit.clone(), value));
+                            board.finish(unit, None);
                         }
-                        Err(e) => st.fail(e),
+                        Err(error) => board.finish(unit, Some(error)),
                     }
-                    wake.notify_all();
                 }
-            }));
-        }
-        for j in joins {
-            j.join().expect("compile worker");
+            });
         }
     });
-
-    let st = state
-        .into_inner()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some(unmodeled) = st.failed.into_iter().find(|e| e.is::<cargo::Unmodeled>()) {
+    let (failed, reported) = {
+        let mut ready = board.lock();
+        (std::mem::take(&mut ready.failed), ready.reported)
+    };
+    if let Some(unmodeled) = failed.into_iter().find(|e| e.is::<cargo::Unmodeled>()) {
         return Err(unmodeled);
     }
-    if st.reported {
+    if reported {
         return Err(crate::out::Reported.into());
     }
-    let mut out = st.out;
+    let mut out = outputs.into_inner().unwrap_or_else(PoisonError::into_inner);
     out.sort_by_key(|(unit, _)| order.get(unit).copied().unwrap_or(usize::MAX));
     Ok(out)
 }
@@ -230,9 +208,9 @@ pub fn compile_ids(
     meta: &cargo::Metadata,
     ids: &[String],
 ) -> Result<HashMap<String, Compiled>> {
-    let (units, deps) = graph_and_extras(meta, ids, &[], false)?;
+    let plan = plan::plan(sess, meta, ids, &[], false)?;
     sess.learn_links(meta);
-    let done = run_units(meta, units, deps, |unit| match unit {
+    let done = run_units(meta, plan, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id),
         Unit::Extra(_) => unreachable!("no extras scheduled"),
     })?;
@@ -252,13 +230,13 @@ pub fn compile_ids_and_tests(
     roots: &[String],
     sel: &compile::TestSel,
 ) -> Result<CompiledTests> {
-    let (units, deps) = graph_and_extras(meta, ids, roots, true)?;
+    let plan = plan::plan(sess, meta, ids, roots, true)?;
     sess.learn_links(meta);
     enum Done {
         Lib(Option<Compiled>),
         Tests(Vec<TestBin>),
     }
-    let done = run_units(meta, units, deps, |unit| match unit {
+    let done = run_units(meta, plan, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id).map(Done::Lib),
         Unit::Extra(id) => compile::compile_tests(sess, meta, id, sel).map(Done::Tests),
     })?;
@@ -286,9 +264,9 @@ pub fn compile_ids_and_extras(
     roots: &[String],
     sel: &crate::build::TargetSel,
 ) -> Result<HashMap<String, Compiled>> {
-    let (units, deps) = graph_and_extras(meta, ids, roots, sel.wants_dev())?;
+    let plan = plan::plan(sess, meta, ids, roots, sel.wants_dev())?;
     sess.learn_links(meta);
-    let done = run_units(meta, units, deps, |unit| match unit {
+    let done = run_units(meta, plan, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id),
         Unit::Extra(id) => compile::check_extras(sess, meta, id, sel).map(|()| None),
     })?;
@@ -299,39 +277,6 @@ pub fn compile_ids_and_extras(
         }
     }
     Ok(out)
-}
-
-fn graph_and_extras(
-    meta: &cargo::Metadata,
-    ids: &[String],
-    roots: &[String],
-    dev: bool,
-) -> Result<Graph> {
-    let mut units = Vec::new();
-    let mut deps = HashMap::new();
-    for id in ids {
-        units.push(Unit::Pkg(id.clone()));
-        deps.insert(Unit::Pkg(id.clone()), pkg_deps(meta, id)?);
-    }
-    for root in roots {
-        units.push(Unit::Extra(root.clone()));
-        let direct = if dev {
-            cargo::test_compile_deps(meta, root)?
-        } else {
-            cargo::compile_deps(meta, root)?
-        };
-        let mut d: Vec<Unit> = direct.into_iter().map(Unit::Pkg).collect();
-        d.push(Unit::Pkg(root.clone()));
-        deps.insert(Unit::Extra(root.clone()), d);
-    }
-    Ok((units, deps))
-}
-
-fn pkg_deps(meta: &cargo::Metadata, id: &str) -> Result<Vec<Unit>> {
-    Ok(cargo::compile_deps(meta, id)?
-        .into_iter()
-        .map(Unit::Pkg)
-        .collect())
 }
 
 static JOBS: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
@@ -361,6 +306,10 @@ pub(crate) fn job_cap() -> usize {
         .unwrap_or(4)
         .max(1)
 }
+
+mod plan;
+mod ready;
+pub(crate) use ready::signal;
 
 #[cfg(test)]
 #[path = "schedule_tests.rs"]

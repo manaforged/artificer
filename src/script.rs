@@ -111,7 +111,7 @@ fn compile(
     action.invalidate()?;
     fs::create_dir_all(&bin_dir)?;
     rustc_cmd.arg(&job.script.src_path);
-    crate::invoke::run_rustc(&mut rustc_cmd, sess, pkg, job.script, &bin_dir)?;
+    crate::invoke::run_rustc(&mut rustc_cmd, sess, pkg, job.script, &bin_dir, None)?;
     action.finish()?;
     Ok((action.lease()?, bin_dir))
 }

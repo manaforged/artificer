@@ -1,5 +1,5 @@
 use super::model::Usage;
-use std::io::{self, Read};
+use std::io::{self, BufRead, BufReader, Read};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
 
 pub(crate) fn status(cmd: &mut Command) -> io::Result<ExitStatus> {
@@ -34,6 +34,52 @@ pub(crate) fn output(cmd: &mut Command) -> io::Result<Output> {
     })
 }
 
+pub(crate) fn status_lines(
+    cmd: &mut Command,
+    mut on_line: impl FnMut(&[u8]) -> io::Result<()> + Send,
+) -> io::Result<ExitStatus> {
+    cmd.stderr(Stdio::piped());
+    let mut child = cmd.spawn()?;
+    let stderr = child.stderr.take();
+    let (read, waited) = std::thread::scope(|scope| {
+        let reader = scope.spawn(move || drain(stderr, &mut on_line));
+        let waited = wait(child);
+        (joined(reader.join()), waited)
+    });
+    let (status, usage) = waited?;
+    read?;
+    if let Some(usage) = usage {
+        super::record::note_usage(usage);
+    }
+    Ok(status)
+}
+
+fn drain(
+    pipe: Option<impl Read>,
+    on_line: &mut impl FnMut(&[u8]) -> io::Result<()>,
+) -> io::Result<()> {
+    let Some(pipe) = pipe else {
+        return Ok(());
+    };
+    let mut reader = BufReader::new(pipe);
+    let mut line = Vec::new();
+    let mut failure = None;
+    loop {
+        line.clear();
+        if reader.read_until(b'\n', &mut line)? == 0 {
+            break;
+        }
+        let text = line.strip_suffix(b"\n").unwrap_or(&line);
+        let text = text.strip_suffix(b"\r").unwrap_or(text);
+        if failure.is_none()
+            && let Err(error) = on_line(text)
+        {
+            failure = Some(error);
+        }
+    }
+    failure.map_or(Ok(()), Err)
+}
+
 fn read_all(pipe: Option<impl Read>) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     if let Some(mut pipe) = pipe {
@@ -42,7 +88,7 @@ fn read_all(pipe: Option<impl Read>) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn joined(result: std::thread::Result<io::Result<Vec<u8>>>) -> io::Result<Vec<u8>> {
+fn joined<T>(result: std::thread::Result<io::Result<T>>) -> io::Result<T> {
     result.unwrap_or_else(|panic| {
         Err(io::Error::other(format!(
             "reading child output panicked: {panic:?}"

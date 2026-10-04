@@ -144,6 +144,9 @@ mod profile;
 #[path = "cli/harness.rs"]
 mod harness;
 
+#[path = "cli/pipeline.rs"]
+mod pipeline;
+
 #[cfg(unix)]
 #[path = "cli/limits.rs"]
 mod limits;

@@ -81,6 +81,10 @@ pub struct UnitRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_us: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta_us: Option<u64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub links: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worker: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<Outcome>,

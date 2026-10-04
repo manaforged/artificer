@@ -182,8 +182,10 @@ once), `busy_ms` (integer, process time summed over all processes), and
 
 A unit object has `unit` (integer index), `name`, `version`, `role`
 (`package` or `targets`), `outcome` (`hit`, `miss`, `failed`, or null),
-`start_ms`, `end_ms`, `duration_ms`, `wait_ms` (time between the unit's
-dependencies finishing and the unit starting), `cpu_ms`, and
+`start_ms`, `end_ms`, `duration_ms`, `wait_ms` (time between the unit
+becoming ready and starting: a library is ready when its dependencies'
+metadata is written, a unit that links when its dependencies finish),
+`cpu_ms`, and
 `peak_rss_bytes` (integer, bytes).
 
 A phase object has `phase` (phase name, such as `rustc`, `key`, or

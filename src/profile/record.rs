@@ -185,6 +185,7 @@ pub(crate) fn merge(part: Part, sent: Instant) {
         }
         unit.start_us = unit.start_us.map(|at| at.saturating_add(offset));
         unit.end_us = unit.end_us.map(|at| at.saturating_add(offset));
+        unit.meta_us = unit.meta_us.map(|at| at.saturating_add(offset));
         state.units.push(unit);
     }
     for mut span in part.spans {
@@ -200,7 +201,28 @@ pub(crate) struct PlannedUnit {
     pub(crate) name: String,
     pub(crate) version: String,
     pub(crate) role: Role,
+    pub(crate) links: bool,
     pub(crate) deps: Vec<usize>,
+}
+
+#[derive(Clone)]
+pub(crate) struct MetaMark {
+    recorder: Arc<Recorder>,
+    unit: u32,
+}
+
+impl MetaMark {
+    pub(crate) fn mark(&self) {
+        self.recorder
+            .mark(self.unit, |unit, now| unit.meta_us = Some(now));
+    }
+}
+
+pub(crate) fn meta_mark() -> Option<MetaMark> {
+    Some(MetaMark {
+        recorder: current()?,
+        unit: UNIT.get()?,
+    })
 }
 
 pub(crate) fn plan(units: Vec<PlannedUnit>) -> Option<u32> {
@@ -221,6 +243,8 @@ pub(crate) fn plan(units: Vec<PlannedUnit>) -> Option<u32> {
                 .collect(),
             start_us: None,
             end_us: None,
+            meta_us: None,
+            links: unit.links,
             worker: None,
             outcome: None,
         }
