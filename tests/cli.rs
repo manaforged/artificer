@@ -161,3 +161,6 @@ mod store_growth;
 
 #[path = "cli/edit_loop.rs"]
 mod edit_loop;
+
+#[path = "cli/sharing.rs"]
+mod sharing;

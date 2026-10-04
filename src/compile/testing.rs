@@ -96,7 +96,7 @@ fn compile_test_one(
     let crate_name = target.name.replace('-', "_");
     let target_tmpdir = invoke::uses_target_tmpdir(target);
     let script = ensure_script(sess, pkg, node)?;
-    let stamp = script.as_ref().map(Script::stamp);
+    let stamp = script.as_ref().map(|s| s.stamp.clone());
     let keyed = unit_key::unit_digest(
         sess,
         pkg,
@@ -143,7 +143,7 @@ fn compile_test_one(
     );
     cmd.args(["-C", "panic=unwind"]);
     invoke::add_externs(&mut cmd, sess, node, invoke::ExternSet::Test, false)?;
-    invoke::add_natives(&mut cmd, sess);
+    invoke::add_natives(&mut cmd, sess, &pkg.id, true);
     if !is_lib && let Some(art) = sess.get(&pkg.id) {
         cmd.arg("--extern")
             .arg(format!("{}={}", art.crate_name, art.path.display()));

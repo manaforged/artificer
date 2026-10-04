@@ -136,10 +136,21 @@ pub(crate) fn same_package_id(a: &str, b: &str) -> bool {
     }
 }
 
+const HOST_ID_PREFIX: &str = "host+";
+
+pub fn host_id(id: &str) -> String {
+    format!("{HOST_ID_PREFIX}{id}")
+}
+
+pub(crate) fn is_host_clone(id: &str) -> bool {
+    id.starts_with(HOST_ID_PREFIX)
+}
+
 pub fn id_by_name(meta: &Metadata, name: &str) -> Result<String> {
     let hits: Vec<_> = meta
         .packages
         .iter()
+        .filter(|p| !is_host_clone(&p.id))
         .filter(|p| p.name == name || same_package_id(&p.id, name))
         .collect();
     if hits.is_empty() {
@@ -159,7 +170,7 @@ pub fn root_id(meta: &Metadata, dir: &Path) -> Result<String> {
     if let Some(p) = meta
         .packages
         .iter()
-        .find(|p| p.manifest_path == manifest || p.root() == dir)
+        .find(|p| !is_host_clone(&p.id) && (p.manifest_path == manifest || p.root() == dir))
     {
         return Ok(p.id.clone());
     }

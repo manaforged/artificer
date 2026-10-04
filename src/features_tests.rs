@@ -15,11 +15,11 @@ bincode v2.0.1 (registry)|alloc,std (*)
         version: version.to_string(),
         source: TreeSource::Other("registry".to_string()),
     };
-    let glam = &map[&key("glam", "0.32.1")];
+    let glam = &map[&(key("glam", "0.32.1"), Side::Normal)];
     assert_eq!(glam, &["bytemuck", "default", "serde", "std"]);
-    let serde = &map[&key("serde_core", "1.0.228")];
+    let serde = &map[&(key("serde_core", "1.0.228"), Side::Normal)];
     assert!(serde.is_empty());
-    let bincode = &map[&key("bincode", "2.0.1")];
+    let bincode = &map[&(key("bincode", "2.0.1"), Side::Normal)];
     assert_eq!(bincode, &["alloc", "std"]);
     assert!(
         map.values()

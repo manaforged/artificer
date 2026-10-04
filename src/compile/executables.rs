@@ -81,7 +81,7 @@ fn compile_exe(
 ) -> Result<PathBuf> {
     let crate_name = target.name.replace('-', "_");
     let script = ensure_script(sess, pkg, node)?;
-    let stamp = script.as_ref().map(Script::stamp);
+    let stamp = script.as_ref().map(|s| s.stamp.clone());
     let keyed = unit_key::unit_digest(
         sess,
         pkg,
@@ -118,7 +118,7 @@ fn compile_exe(
         true,
     );
     invoke::add_externs(&mut cmd, sess, node, set, false)?;
-    invoke::add_natives(&mut cmd, sess);
+    invoke::add_natives(&mut cmd, sess, &pkg.id, label == "example");
     if pkg.lib_target().is_some()
         && let Some(lib) = sess.get(&pkg.id)
     {

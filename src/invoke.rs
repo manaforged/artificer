@@ -90,8 +90,15 @@ pub(crate) fn rustc_base(
     for a in &sess.settings.codegen {
         cmd.arg(a);
     }
-    cmd.arg("--remap-path-prefix")
-        .arg(format!("{}=.", pkg.root().display()));
+    let mut remaps = [
+        (pkg.root().to_path_buf(), "."),
+        (env_path(&sess.settings.home), crate::inputs::STORE_TOKEN),
+    ];
+    remaps.sort_by_key(|(from, _)| from.as_os_str().len());
+    for (from, to) in remaps {
+        cmd.arg("--remap-path-prefix")
+            .arg(format!("{}={to}", from.display()));
+    }
     cmd.arg("--out-dir").arg(out);
     if let Some(dir) = sess.settings.incremental_dir(pkg) {
         cmd.arg("-C").arg(format!("incremental={}", dir.display()));
@@ -136,23 +143,16 @@ pub(crate) fn apply_script(cmd: &mut Command, s: &Script) {
     }
 }
 
-pub(crate) fn add_natives(cmd: &mut Command, sess: &Session) {
+pub(crate) fn add_natives(cmd: &mut Command, sess: &Session, root: &str, dev: bool) {
+    let linked = sess.link_set(root, dev);
     let natives = sess.natives.lock().expect("natives");
+    let mut owners: Vec<&String> = natives.keys().filter(|id| linked.contains(*id)).collect();
+    owners.sort();
     let mut seen = std::collections::HashSet::new();
-    for out in natives.values() {
+    for out in owners.into_iter().filter_map(|id| natives.get(id)) {
         for search in script::link_search(out) {
-            if seen.insert(format!("L{search}")) {
+            if seen.insert(search.clone()) {
                 cmd.arg("-L").arg(search);
-            }
-        }
-        for lib in script::link_libs(out) {
-            if seen.insert(format!("l{lib}")) {
-                cmd.arg("-l").arg(lib);
-            }
-        }
-        for arg in script::link_args(out) {
-            if seen.insert(format!("a{arg}")) {
-                cmd.arg("-C").arg(format!("link-arg={arg}"));
             }
         }
     }

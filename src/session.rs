@@ -20,6 +20,7 @@ pub struct Session {
     pub settings: Settings,
     pub artifacts: Mutex<HashMap<String, Artifact>>,
     pub(crate) natives: Mutex<HashMap<String, String>>,
+    link_edges: Mutex<HashMap<String, Vec<(String, LinkEdge)>>>,
     pub(crate) source_keys: Mutex<HashMap<String, String>>,
     artifact_hashes: Mutex<HashMap<PathBuf, String>>,
     env_names: Mutex<HashMap<String, Arc<Vec<String>>>>,
@@ -32,6 +33,12 @@ pub struct Session {
     pub primary: HashSet<String>,
     announced: Mutex<HashSet<(String, crate::out::Status)>>,
     shown: Mutex<HashSet<String>>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LinkEdge {
+    Normal,
+    Dev,
 }
 
 pub(crate) fn package_label(pkg: &Package) -> String {
@@ -58,6 +65,7 @@ impl Session {
             settings: Settings::load(home, dir, ws, name, members, packages, target)?,
             artifacts: Mutex::new(HashMap::new()),
             natives: Mutex::new(HashMap::new()),
+            link_edges: Mutex::new(HashMap::new()),
             source_keys: Mutex::new(HashMap::new()),
             artifact_hashes: Mutex::new(HashMap::new()),
             env_names: Mutex::new(HashMap::new()),
@@ -178,5 +186,60 @@ impl Session {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(pkg.id.clone(), key.clone());
         Ok(key)
+    }
+
+    pub(crate) fn learn_links(&self, meta: &crate::cargo::Metadata) {
+        let Some(resolve) = meta.resolve.as_ref() else {
+            return;
+        };
+        let mut edges = self
+            .link_edges
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for node in &resolve.nodes {
+            let deps = node
+                .deps
+                .iter()
+                .filter_map(|d| {
+                    if d.usable_for_lib() {
+                        Some((d.pkg.clone(), LinkEdge::Normal))
+                    } else if d.usable_for_dev() {
+                        Some((d.pkg.clone(), LinkEdge::Dev))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            edges.insert(node.id.clone(), deps);
+        }
+    }
+
+    pub(crate) fn link_set(&self, root: &str, dev: bool) -> HashSet<String> {
+        let edges = self
+            .link_edges
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut seen = HashSet::from([root.to_string()]);
+        let mut stack: Vec<String> = edges
+            .get(root)
+            .into_iter()
+            .flatten()
+            .filter(|(_, edge)| *edge == LinkEdge::Normal || dev)
+            .map(|(id, _)| id.clone())
+            .collect();
+        while let Some(id) = stack.pop() {
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+            stack.extend(
+                edges
+                    .get(&id)
+                    .into_iter()
+                    .flatten()
+                    .filter(|(_, edge)| *edge == LinkEdge::Normal)
+                    .map(|(dep, _)| dep.clone()),
+            );
+        }
+        seen
     }
 }

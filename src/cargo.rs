@@ -155,6 +155,12 @@ impl Package {
     }
 }
 
+impl DepKind {
+    pub fn is_build(&self) -> bool {
+        self.kind.as_deref() == Some("build")
+    }
+}
+
 impl Dep {
     pub fn is_dev(&self) -> bool {
         self.dep_kinds
@@ -176,7 +182,7 @@ impl Dep {
     pub fn usable_for_script(&self) -> bool {
         self.dep_kinds
             .iter()
-            .any(|k| k.kind.as_deref() == Some("build") && !disabled_cfg(k.target.as_deref()))
+            .any(|k| k.is_build() && !disabled_cfg(k.target.as_deref()))
     }
 
     pub fn usable_for_dev(&self) -> bool {
@@ -360,8 +366,8 @@ mod graph;
 #[cfg(all(test, unix))]
 use graph::same_package_id;
 pub use graph::{
-    closure_many, compile_deps, find_manifest, id_by_name, must_link, node, package, root_id,
-    test_closure_many, test_compile_deps,
+    closure_many, compile_deps, find_manifest, host_id, id_by_name, must_link, node, package,
+    root_id, test_closure_many, test_compile_deps,
 };
 
 mod metadata;

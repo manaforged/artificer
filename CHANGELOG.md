@@ -69,6 +69,15 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
   longer deletes incremental directories during builds.
 - File content digests are kept in the store and reused while a file's
   length, modification time, inode, and change time stay the same.
+- A package that build scripts or proc-macros use with different features
+  than normal code is now built once per side, as Cargo does, instead of
+  sending the whole build to Cargo.
+- Final links get only the library search paths of the crates they link.
+  A dependency's `rustc-link-lib` and `rustc-link-arg` no longer reach
+  dependents, and build-dependencies no longer add anything to the link.
+- Units no longer record the store's path. Build-script output, recorded
+  inputs, and compiled output name the store with a placeholder, so units
+  exported from one store hit after import into a store at another path.
 
 ## 0.1.1 - 2026-09-26
 

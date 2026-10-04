@@ -37,6 +37,7 @@ pub fn metadata(output: &str) -> Vec<(String, String)> {
 
 pub(super) fn input_stamp(
     pkg: &Package,
+    home: &Path,
     output: &str,
     out_dir: &Path,
     workspace_root: &Path,
@@ -46,14 +47,9 @@ pub(super) fn input_stamp(
     let spellings: Vec<Vec<String>> = roots
         .iter()
         .map(|root| {
-            let plain = root.display().to_string();
-            let shown = crate::platform::env_path(root).display().to_string();
-            [plain, shown]
+            crate::inputs::spellings(root)
                 .into_iter()
-                .flat_map(|text| {
-                    let escaped = text.replace('\\', "\\\\");
-                    [text, escaped]
-                })
+                .map(|(_, text)| text)
                 .collect()
         })
         .collect();
@@ -86,7 +82,11 @@ pub(super) fn input_stamp(
     for line in output.lines() {
         if let Some(path) = directive(line, "rerun-if-changed=") {
             key.feed_str(path);
-            watch(&mut key, &pkg.root().join(path));
+            watch(
+                &mut key,
+                home,
+                &pkg.root().join(crate::inputs::concrete(home, path)),
+            );
         }
         if let Some(name) = directive(line, "rerun-if-env-changed=") {
             key.feed_str(name);
@@ -123,7 +123,7 @@ fn mentions(dir: &Path, needles: &[(usize, memchr::memmem::Finder<'_>)], hits: &
     }
 }
 
-pub(super) fn watch(key: &mut Key, path: &Path) {
+pub(super) fn watch(key: &mut Key, home: &Path, path: &Path) {
     match fs::metadata(path) {
         Err(_) => {
             key.feed(b"absent");
@@ -139,12 +139,15 @@ pub(super) fn watch(key: &mut Key, path: &Path) {
                 if let Some(name) = kid.file_name() {
                     key.feed(name.as_encoded_bytes());
                 }
-                watch(key, &kid);
+                watch(key, home, &kid);
             }
         }
         Ok(_) => {
             key.feed(b"file");
-            key.feed(&fs::read(path).unwrap_or_default());
+            key.feed(&crate::inputs::portable_bytes(
+                home,
+                &fs::read(path).unwrap_or_default(),
+            ));
         }
     }
 }

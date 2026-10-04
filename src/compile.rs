@@ -58,7 +58,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
                 .iter()
                 .all(|t| matches!(t.as_str(), "cdylib" | "staticlib" | "dylib")));
     let script = ensure_script(sess, pkg, node)?;
-    let stamp = script.as_ref().map(Script::stamp);
+    let stamp = script.as_ref().map(|s| s.stamp.clone());
     let keyed = unit_key::unit_digest(
         sess,
         pkg,
@@ -121,7 +121,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
         kind.starts_with("meta"),
     )?;
     if kind == "bin" || proc_macro {
-        invoke::add_natives(&mut cmd, sess);
+        invoke::add_natives(&mut cmd, sess, &pkg.id, false);
     }
     if proc_macro {
         cmd.arg("--extern").arg("proc_macro");

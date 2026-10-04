@@ -1,6 +1,7 @@
 use super::directives::parse_print_cfg;
 use crate::action::Key;
 use crate::cargo::{Package, Target};
+use crate::inputs::portable;
 use crate::platform::env_path;
 use crate::settings::Settings;
 use anyhow::{Context, Result, bail};
@@ -32,7 +33,7 @@ impl Job<'_> {
         let (pkg, settings) = (self.pkg, self.settings);
         let home = Some(settings.home.as_path());
         let mut key = Key::new();
-        key.feed(b"build-script-env-v6");
+        key.feed(b"build-script-env-v7");
         key.feed(&[u8::from(settings.release), u8::from(self.debug)]);
         key.feed_str(self.opt_level);
         key.feed_str(&crate::key::rustc_bin());
@@ -45,7 +46,7 @@ impl Job<'_> {
             &mut key,
             self.dep_env
                 .iter()
-                .map(|(k, v)| format!("{k}={v}"))
+                .map(|(k, v)| format!("{k}={}", portable(&settings.home, v)))
                 .collect(),
         );
         for w in &settings.wrapper_chain(pkg) {
@@ -64,7 +65,7 @@ impl Job<'_> {
             &mut key,
             self.externs
                 .iter()
-                .map(|(n, p)| format!("{}={}", n, p.display()))
+                .map(|(n, p)| format!("{n}={}", portable(&settings.home, &p.display().to_string())))
                 .collect(),
         );
         for (_, path) in self.externs {

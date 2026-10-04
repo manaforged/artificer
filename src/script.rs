@@ -4,20 +4,21 @@ use anyhow::{Result, bail};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const STAMP_FILE: &str = "stamp";
+
 pub struct Script {
     pub(crate) lease: std::sync::Arc<std::fs::File>,
     pub out_dir: PathBuf,
     pub output: String,
+    pub stamp: String,
     pub restored: bool,
 }
 
-impl Script {
-    pub fn stamp(&self) -> String {
-        let mut key = Key::new();
-        key.feed(self.output.as_bytes());
-        watch(&mut key, &self.out_dir);
-        key.full_digest()
-    }
+fn stamp_of(home: &Path, recorded: &str, out_dir: &Path) -> String {
+    let mut key = Key::new();
+    key.feed(recorded.as_bytes());
+    watch(&mut key, home, out_dir);
+    key.full_digest()
 }
 
 pub fn ensure(
@@ -59,11 +60,14 @@ pub fn ensure(
     let out_dir = action.out.clone();
     let bin_dir = action.slot.dir.join("bin");
     let mut rustc_cmd = job.rustc_cmd(&bin_dir);
-    if let Some(output) = restorable(&action, &job, &rustc_cmd) {
+    if let Some(recorded) = restorable(&action, &job, &rustc_cmd) {
+        let stamp = fs::read_to_string(action.slot.dir.join(STAMP_FILE))
+            .unwrap_or_else(|_| stamp_of(&settings.home, &recorded, &out_dir));
         return Ok(Script {
             lease: action.lease()?,
             out_dir,
-            output,
+            output: crate::inputs::concrete(&settings.home, &recorded),
+            stamp,
             restored: true,
         });
     }
@@ -74,20 +78,31 @@ pub fn ensure(
     rustc_cmd.arg(&script.src_path);
     crate::invoke::run_rustc(&mut rustc_cmd, sess, pkg, script, &bin_dir)?;
     let output = job.run(&bin_dir, &out_dir)?;
-    record(&action, &job, &output)?;
+    let recorded = crate::inputs::portable(&settings.home, &output);
+    let stamp = stamp_of(&settings.home, &recorded, &out_dir);
+    record(&action, &job, &recorded, &stamp)?;
     Ok(Script {
         lease: action.lease()?,
         out_dir,
         output,
+        stamp,
         restored: false,
     })
 }
 
-fn record(action: &Action, job: &Job, output: &str) -> Result<()> {
+fn record(action: &Action, job: &Job, recorded: &str, stamp: &str) -> Result<()> {
     let dir = &action.slot.dir;
-    fs::write(dir.join("output"), output)?;
+    fs::write(dir.join("output"), recorded)?;
+    fs::write(dir.join(STAMP_FILE), stamp)?;
     action.finish()?;
-    let stamp = input_stamp(job.pkg, output, &action.out, &job.settings.workspace_root);
+    let settings = job.settings;
+    let stamp = input_stamp(
+        job.pkg,
+        &settings.home,
+        recorded,
+        &action.out,
+        &settings.workspace_root,
+    );
     fs::write(dir.join("script-inputs"), stamp)?;
     Ok(())
 }
@@ -100,10 +115,17 @@ fn restorable(action: &Action, job: &Job, rustc_cmd: &std::process::Command) -> 
     {
         return None;
     }
-    let output = fs::read_to_string(dir.join("output")).ok()?;
+    let recorded = fs::read_to_string(dir.join("output")).ok()?;
     let stamp = fs::read_to_string(dir.join("script-inputs")).ok()?;
-    let current = input_stamp(pkg, &output, &action.out, &job.settings.workspace_root);
-    (stamp == current).then_some(output)
+    let settings = job.settings;
+    let current = input_stamp(
+        pkg,
+        &settings.home,
+        &recorded,
+        &action.out,
+        &settings.workspace_root,
+    );
+    (stamp == current).then_some(recorded)
 }
 
 mod job;

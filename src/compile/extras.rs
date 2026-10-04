@@ -110,7 +110,7 @@ fn check_one(
     let prefix = scan.prefix();
     let kind = format!("{prefix}{crate_name}");
     let script = ensure_script(sess, pkg, node)?;
-    let stamp = script.as_ref().map(Script::stamp);
+    let stamp = script.as_ref().map(|s| s.stamp.clone());
     let keyed = unit_key::unit_digest(
         sess,
         pkg,
@@ -156,7 +156,7 @@ fn check_one(
         },
         true,
     )?;
-    invoke::add_natives(&mut cmd, sess);
+    invoke::add_natives(&mut cmd, sess, &pkg.id, true);
     if self_extern && let Some(art) = sess.get(&pkg.id) {
         let path = art.rmeta.as_ref().unwrap_or(&art.path);
         cmd.arg("--extern")

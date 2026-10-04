@@ -188,6 +188,7 @@ pub fn compile_ids(
     ids: &[String],
 ) -> Result<HashMap<String, Compiled>> {
     let (units, deps) = graph_and_extras(meta, ids, &[], false)?;
+    sess.learn_links(meta);
     let done = run_units(units, deps, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id),
         Unit::Extra(_) => unreachable!("no extras scheduled"),
@@ -209,6 +210,7 @@ pub fn compile_ids_and_tests(
     sel: &compile::TestSel,
 ) -> Result<CompiledTests> {
     let (units, deps) = graph_and_extras(meta, ids, roots, true)?;
+    sess.learn_links(meta);
     enum Done {
         Lib(Option<Compiled>),
         Tests(Vec<TestBin>),
@@ -243,6 +245,7 @@ pub fn compile_ids_and_extras(
     all: bool,
 ) -> Result<HashMap<String, Compiled>> {
     let (units, deps) = graph_and_extras(meta, ids, roots, tests || all)?;
+    sess.learn_links(meta);
     let done = run_units(units, deps, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id),
         Unit::Extra(id) => compile::check_extras(sess, meta, id, tests, all).map(|()| None),
