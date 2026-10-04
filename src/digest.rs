@@ -196,6 +196,6 @@ impl Drop for Memo<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "digest_tests.rs"]
 mod tests;

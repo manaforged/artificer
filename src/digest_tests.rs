@@ -1,7 +1,6 @@
 use super::*;
 use std::time::{Duration, SystemTime};
 
-#[cfg(unix)]
 #[test]
 fn a_same_length_edit_with_its_old_mtime_is_not_served_from_the_memo() -> Result<()> {
     let tmp = tempfile::tempdir()?;
