@@ -38,7 +38,9 @@ the same miss twice. A unit is published only after rustc succeeds, and a
 published unit is never modified. If a build is killed, the operating
 system releases its lock and no partial unit remains. The next build
 compiles that crate. On Unix one FIFO jobserver shares the host core
-budget across concurrent builds. `CARGO_BUILD_JOBS` and `ARTIFICER_JOBS`
+budget across concurrent builds. Within one build, rustc's extra threads
+draw from a second pool that the build owns, as with Cargo, so a killed
+rustc cannot drain the shared one. `CARGO_BUILD_JOBS` and `ARTIFICER_JOBS`
 cap workers within each process. Windows has no cross-process pool. Each
 process schedules with its own workers.
 

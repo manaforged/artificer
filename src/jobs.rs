@@ -9,7 +9,30 @@ use std::path::Path;
 use std::path::PathBuf;
 
 #[cfg(unix)]
+mod build;
+#[cfg(unix)]
 mod held;
+
+#[cfg(unix)]
+pub use build::BuildPool;
+
+#[cfg(not(unix))]
+pub struct BuildPool;
+
+#[cfg(not(unix))]
+impl BuildPool {
+    pub(crate) fn new(_home: &Path, _tokens: usize) -> Result<Option<Self>> {
+        Ok(None)
+    }
+
+    pub(crate) fn take(&self) -> Result<()> {
+        Ok(())
+    }
+
+    pub(crate) fn configure(&self, cmd: &mut std::process::Command) {
+        isolate(cmd);
+    }
+}
 
 pub fn install(home: &Path) -> Result<()> {
     fs::create_dir_all(home)?;
@@ -38,13 +61,7 @@ fn install_pool(home: &Path) -> Result<()> {
         .unwrap_or(4)
         .max(1);
     if !fifo.exists() {
-        let status = std::process::Command::new("mkfifo")
-            .arg(&fifo)
-            .status()
-            .context("mkfifo")?;
-        if !status.success() && !fifo.exists() {
-            anyhow::bail!("mkfifo {}", fifo.display());
-        }
+        make_fifo(&fifo)?;
     }
     if parked(&fifo) {
         return write_env(home, &fifo);
@@ -158,6 +175,20 @@ pub(crate) fn fill(fifo: &Path, n: usize) -> Result<()> {
     keep.get_or_insert_with(std::collections::HashMap::new)
         .entry(fifo.to_path_buf())
         .or_insert((f, None));
+    Ok(())
+}
+
+#[cfg(unix)]
+fn make_fifo(path: &Path) -> Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let name = std::ffi::CString::new(path.as_os_str().as_bytes())
+        .with_context(|| format!("fifo path {}", path.display()))?;
+    // SAFETY: `name` is a valid NUL-terminated path that outlives the call.
+    let made = unsafe { libc::mkfifo(name.as_ptr(), 0o600) } == 0;
+    if !made && !path.exists() {
+        return Err(io::Error::last_os_error())
+            .with_context(|| format!("mkfifo {}", path.display()));
+    }
     Ok(())
 }
 

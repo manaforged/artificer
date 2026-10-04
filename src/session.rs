@@ -31,6 +31,7 @@ pub struct Session {
     pub meta_only: bool,
     pub must_link: HashSet<String>,
     pub(crate) build_only: HashSet<String>,
+    pub(crate) build_pool: Option<crate::jobs::BuildPool>,
     pub ship: HashSet<String>,
     pub(crate) select: Option<crate::build::TargetSel>,
     pub primary: HashSet<String>,
@@ -86,9 +87,13 @@ impl Session {
         packages: &[Package],
         target: Option<&Path>,
     ) -> Result<Self> {
+        let settings = Settings::load(home, dir, ws, name, members, packages, target)?;
+        let build_pool = crate::jobs::BuildPool::new(&settings.home, crate::schedule::job_cap())
+            .ok()
+            .flatten();
         Ok(Self {
             leases: Arc::default(),
-            settings: Settings::load(home, dir, ws, name, members, packages, target)?,
+            settings,
             artifacts: Mutex::new(HashMap::new()),
             natives: Mutex::new(HashMap::new()),
             link_edges: Mutex::new(HashMap::new()),
@@ -102,6 +107,7 @@ impl Session {
             meta_only: false,
             must_link: HashSet::new(),
             build_only: HashSet::new(),
+            build_pool,
             ship: HashSet::new(),
             select: None,
             primary: HashSet::new(),

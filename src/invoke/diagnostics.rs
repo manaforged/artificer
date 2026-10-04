@@ -106,10 +106,19 @@ pub(crate) fn run_rustc(
     out: &Path,
     early: Option<&Early>,
 ) -> Result<()> {
-    let _permit = crate::profile::span(crate::profile::UnitPhase::Permit, || {
-        crate::jobs::acquire(&sess.settings.home)
+    let (_permit, _token) = crate::profile::span(crate::profile::UnitPhase::Permit, || {
+        let permit = crate::jobs::acquire(&sess.settings.home)?;
+        let token = sess
+            .build_pool
+            .as_ref()
+            .map(|pool| pool.take())
+            .transpose()?;
+        anyhow::Ok((permit, token))
     })?;
-    crate::jobs::isolate(cmd);
+    match &sess.build_pool {
+        Some(pool) => pool.configure(cmd),
+        None => crate::jobs::isolate(cmd),
+    }
     crate::profile::span(crate::profile::ProcessPhase::Rustc, || {
         run_rustc_inner(cmd, sess, pkg, target, out, early)
     })

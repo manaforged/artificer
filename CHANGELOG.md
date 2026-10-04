@@ -9,6 +9,9 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- rustc gets a job token pool that its build owns, as with Cargo, so its
+  extra codegen and frontend threads run only on free cores; the pool is
+  removed when the build ends.
 - A new `trust` mode, on by default, passes `-Z trusted-crate` to crates.io
   dependencies when rustc accepts it. That rustc skips checks that only
   report errors, such as borrowck and lints, for crates that already
