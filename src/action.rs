@@ -57,14 +57,16 @@ pub enum Kind {
     Unit,
     Test,
     Script,
+    ScriptBin,
 }
 
 impl Kind {
-    fn prefix(self) -> &'static str {
+    pub(crate) fn prefix(self) -> &'static str {
         match self {
             Self::Unit => "u-",
             Self::Test => "test-",
             Self::Script => "script-",
+            Self::ScriptBin => "scriptbin-",
         }
     }
 }
@@ -73,8 +75,12 @@ pub struct Action {
     pub name: String,
     pub slot: Slot,
     pub out: PathBuf,
+    home: PathBuf,
+    lineage: Option<String>,
     lease: Arc<std::fs::File>,
     writing: std::cell::Cell<bool>,
+    fetched: std::cell::Cell<bool>,
+    from_remote: std::cell::Cell<bool>,
     _hold: Hold,
 }
 
@@ -89,15 +95,40 @@ impl Action {
             name,
             slot,
             out,
+            home: home.to_path_buf(),
+            lineage: None,
             lease,
             writing: std::cell::Cell::new(false),
+            fetched: std::cell::Cell::new(false),
+            from_remote: std::cell::Cell::new(false),
             _hold: hold,
         })
     }
 
     #[must_use]
+    pub fn lineage(mut self, lineage: Option<String>) -> Self {
+        self.lineage = lineage;
+        self
+    }
+
+    #[must_use]
     pub fn hit(&self) -> bool {
+        if self.slot.hit() {
+            return true;
+        }
+        if !self.fetched.replace(true) && self.fetch().unwrap_or(false) {
+            return true;
+        }
         self.slot.hit()
+    }
+
+    fn fetch(&self) -> Result<bool> {
+        if crate::remote::fetch(&self.home, &self.name, &self.slot)? {
+            self.from_remote.set(true);
+            self.finish()?;
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     pub(crate) fn prepare(&self) -> Result<()> {
@@ -129,7 +160,21 @@ impl Action {
     }
 
     pub fn finish(&self) -> Result<()> {
-        self.slot.mark()
+        if !self.from_remote.get() {
+            crate::remote::note_built(&self.home, &self.name);
+        }
+        let Some(lineage) = &self.lineage else {
+            return self.slot.mark();
+        };
+        if let Err(error) = store::label(&self.slot, lineage) {
+            crate::out::err(format!(
+                "artificer: could not label {}: {error:#}",
+                self.name
+            ));
+        }
+        self.slot.mark()?;
+        store::adopt(&self.home, lineage, &self.name);
+        Ok(())
     }
 
     pub(crate) fn invalidate(&self) -> Result<()> {

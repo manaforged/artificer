@@ -138,6 +138,19 @@ fn tool_available(name: &str) -> bool {
 #[path = "cli/dispatch.rs"]
 mod dispatch;
 
+#[path = "cli/profile.rs"]
+mod profile;
+
+#[path = "cli/harness.rs"]
+mod harness;
+
+#[path = "cli/pipeline.rs"]
+mod pipeline;
+
+#[cfg(unix)]
+#[path = "cli/limits.rs"]
+mod limits;
+
 #[path = "cli/shim.rs"]
 mod shim_dispatch;
 
@@ -155,3 +168,21 @@ mod output;
 
 #[path = "cli/targets.rs"]
 mod targets;
+
+#[path = "cli/store_growth.rs"]
+mod store_growth;
+
+#[path = "cli/edit_loop.rs"]
+mod edit_loop;
+
+#[path = "cli/sharing.rs"]
+mod sharing;
+
+#[path = "cli/remote.rs"]
+mod remote;
+
+#[path = "cli/coverage.rs"]
+mod coverage;
+
+#[path = "cli/scripts.rs"]
+mod scripts;

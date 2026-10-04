@@ -95,3 +95,18 @@ fn another_tools_cache_tag_is_not_ownership() -> Result<()> {
     assert!(other.join("data.bin").is_file());
     Ok(())
 }
+
+#[test]
+fn a_store_written_by_an_earlier_release_is_adopted() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let store = tmp.path().join("artificer");
+    fs::create_dir_all(store.join("units"))?;
+    fs::write(
+        store.join("CACHEDIR.TAG"),
+        "Signature: 8a477f597d28d172789f06886806bc55\n",
+    )?;
+    fs::write(store.join("stat.hits"), "1")?;
+    assert!(ready(&store));
+    assert!(owned(&store));
+    Ok(())
+}

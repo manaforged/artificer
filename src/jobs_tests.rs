@@ -173,3 +173,66 @@ fn fifo_uses_a_no_space_alias_for_the_same_home() -> Result<()> {
     );
     Ok(())
 }
+
+fn held_files(fifo: &Path) -> Result<usize> {
+    match fs::read_dir(held::dir(fifo)) {
+        Ok(entries) => Ok(entries.count()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(0),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[test]
+fn a_dead_holder_token_returns_to_a_blocked_acquire() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let home = tmp.path().to_path_buf();
+    install(&home)?;
+    let fifo = home.join("jobserver.fifo");
+    drain(&mut open(&fifo)?)?;
+    let dir = held::dir(&fifo);
+    fs::create_dir_all(&dir)?;
+    fs::write(dir.join("4194303-0-0"), b"")?;
+    let (send, recv) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        drop(send.send(acquire(&home).map(drop)));
+    });
+    let waited = recv.recv_timeout(held::RECLAIM_AFTER * 5)?;
+    waited?;
+    assert_eq!(pool_depth(&fifo)?, 1);
+    assert_eq!(held_files(&fifo)?, 0);
+    Ok(())
+}
+
+#[test]
+fn a_live_holder_token_is_not_reclaimed() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let home = tmp.path();
+    install(home)?;
+    let fifo = home.join("jobserver.fifo");
+    let before = pool_depth(&fifo)?;
+    let dir = held::dir(&fifo);
+    fs::create_dir_all(&dir)?;
+    let live = dir.join("4194303-1-0");
+    let lock = fs::File::create(&live)?;
+    lock.lock()?;
+    assert_eq!(held::reclaim(&fifo)?, 0);
+    assert_eq!(pool_depth(&fifo)?, before);
+    assert!(live.exists());
+    Ok(())
+}
+
+#[test]
+fn dropping_a_permit_removes_its_holder_and_returns_the_token() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let home = tmp.path();
+    install(home)?;
+    let fifo = home.join("jobserver.fifo");
+    let before = pool_depth(&fifo)?;
+    let permit = acquire(home)?;
+    assert_eq!(held_files(&fifo)?, 1);
+    assert_eq!(held::reclaim(&fifo)?, 0);
+    drop(permit);
+    assert_eq!(held_files(&fifo)?, 0);
+    assert_eq!(pool_depth(&fifo)?, before);
+    Ok(())
+}

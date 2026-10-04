@@ -1,6 +1,7 @@
 use crate::compile::{self, RustcOutcome, ScriptOutcome};
 use crate::maintenance::gc_daily;
 use crate::session::Session;
+use crate::settings::Settings;
 use crate::{artifact, cargo, config, features, jobs, manifest, mods, schedule, sweep};
 use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
@@ -19,7 +20,14 @@ pub fn check(pkg: &Path, home: &Path) -> Result<Report> {
 }
 
 pub fn check_package(dir: &Path, packages: &[String], home: &Path) -> Result<Report> {
-    let (root, compiled, _) = check_graph(dir, packages, home, true, &CheckOpts::default())?;
+    let (root, compiled, _) = check_graph(
+        dir,
+        packages,
+        home,
+        true,
+        &CheckOpts::default(),
+        &TargetSel::default(),
+    )?;
     let last = compiled
         .get(&root)
         .with_context(|| format!("no lib target for {root}"))?;
@@ -44,13 +52,28 @@ pub struct CheckOpts {
     pub features: Vec<String>,
     pub no_default: bool,
     pub meta_flags: Vec<String>,
+    pub target_dir: Option<PathBuf>,
     pub release: bool,
     pub link: bool,
     pub targets: Targets,
 }
 
 pub fn check_cmd(dir: &Path, packages: &[String], home: &Path, opts: CheckOpts) -> Result<i32> {
-    let (_, compiled, _) = match check_graph(dir, packages, home, !opts.link, &opts) {
+    let sel = TargetSel::from_targets(opts.targets);
+    check_selected(dir, packages, home, opts, &sel)
+}
+
+pub fn check_selected(
+    dir: &Path,
+    packages: &[String],
+    home: &Path,
+    opts: CheckOpts,
+    sel: &TargetSel,
+) -> Result<i32> {
+    if opts.json && sel.targets().is_none() {
+        return Err(select::unmodeled("JSON output for this target selection"));
+    }
+    let (_, compiled, _) = match check_graph(dir, packages, home, !opts.link, &opts, sel) {
         Ok(v) => v,
         Err(e) => {
             if opts.json {
@@ -118,27 +141,6 @@ pub fn check_cmd(dir: &Path, packages: &[String], home: &Path, opts: CheckOpts) 
     Ok(0)
 }
 
-fn finished(dir: &Path, name: &str, started: std::time::Instant) {
-    let profile = json_profile(dir, name, false);
-    let optimized = profile["opt_level"]
-        .as_str()
-        .is_some_and(|level| level != "0");
-    let debuginfo = profile["debuginfo"].as_u64().is_some_and(|level| level > 0);
-    let shape = match (optimized, debuginfo) {
-        (true, true) => "optimized + debuginfo",
-        (true, false) => "optimized",
-        (false, true) => "unoptimized + debuginfo",
-        (false, false) => "unoptimized",
-    };
-    crate::out::status(
-        crate::out::Status::Finished,
-        format!(
-            "`{name}` profile [{shape}] target(s) in {}",
-            crate::out::elapsed(started.elapsed())
-        ),
-    );
-}
-
 pub(crate) fn check_roots(
     meta: &cargo::Metadata,
     dir: &Path,
@@ -154,6 +156,13 @@ pub(crate) fn check_roots(
     if workspace {
         return Ok(meta.workspace_members.clone());
     }
+    if let Some(defaults) = meta
+        .workspace_default_members
+        .as_ref()
+        .filter(|ids| !ids.is_empty())
+    {
+        return Ok(defaults.clone());
+    }
     match cargo::root_id(meta, dir) {
         Ok(id) => Ok(vec![id]),
         Err(_) if !meta.workspace_members.is_empty() => Ok(meta.workspace_members.clone()),
@@ -161,7 +170,7 @@ pub(crate) fn check_roots(
     }
 }
 
-type Graph = (String, HashMap<String, compile::Compiled>, PathBuf);
+type Graph = (String, HashMap<String, compile::Compiled>, Settings);
 
 pub(super) struct Plan {
     meta: cargo::Metadata,
@@ -187,16 +196,17 @@ pub(super) fn plan(
     extra: &[String],
     workspace: bool,
     dev: bool,
+    target: Option<&Path>,
 ) -> Result<Plan> {
     let manifest = cargo::find_manifest(dir)?;
     let extra: Vec<&str> = extra.iter().map(String::as_str).collect();
-    let mut meta = crate::out::timed("metadata", || {
+    let mut meta = crate::profile::span(crate::profile::SetupPhase::Metadata, || {
         cargo::metadata_extra(&manifest, &extra, home)
     })?;
     let pkg_dir = manifest.parent().unwrap_or(dir).to_path_buf();
-    sweep_meta(&meta, home, &pkg_dir)?;
+    sweep_meta(&meta, home, &pkg_dir, target)?;
     let roots = check_roots(&meta, &pkg_dir, packages, workspace)?;
-    let found = crate::out::timed("probe", || {
+    let found = crate::profile::span(crate::profile::SetupPhase::FeatureProbe, || {
         features::selected(&manifest, &roots, &meta, &extra, dev, home)
     });
     let Some(sel) = found else {
@@ -216,6 +226,7 @@ fn check_graph(
     home: &Path,
     meta_only: bool,
     opts: &CheckOpts,
+    sel: &TargetSel,
 ) -> Result<Graph> {
     jobs::install(home)?;
     let started = std::time::Instant::now();
@@ -226,35 +237,51 @@ fn check_graph(
         opts.no_default,
         &opts.meta_flags,
     );
-    let dev = opts.targets.tests || opts.targets.all;
-    let plan = plan(dir, packages, home, &extra, opts.workspace, dev)?;
+    let dev = sel.wants_dev();
+    let plan = plan(
+        dir,
+        packages,
+        home,
+        &extra,
+        opts.workspace,
+        dev,
+        opts.target_dir.as_deref(),
+    )?;
     let root = plan
         .roots
         .first()
         .cloned()
         .with_context(|| "no packages to check")?;
+    sel.validate(&plan.meta, &plan.roots)?;
     let order = if dev {
         cargo::test_closure_many(&plan.meta, &plan.roots)?
     } else {
         cargo::closure_many(&plan.meta, &plan.roots)?
     };
-    let mut sess = check_session(home, &plan, meta_only, opts)?;
+    let mut sess = check_session(home, &plan, meta_only, opts, sel)?;
     sess.must_link = cargo::must_link(&plan.meta, &order);
-    let compiled = check_units(&sess, &plan, &order, meta_only, opts)?;
+    sess.build_only = cargo::build_only(&plan.meta, &plan.roots, &order, dev);
+    let compiled = check_units(&sess, &plan, &order, meta_only, sel)?;
     let ws = cargo::root(&plan.meta, &plan.pkg_dir);
     finished(ws, profile_name(opts.release, "dev"), started);
     record_stats(home, &compiled, started, op);
-    Ok((root, compiled, sess.settings.profile_dir()))
+    Ok((root, compiled, sess.settings))
 }
 
 fn profile_name(release: bool, base: &'static str) -> &'static str {
     if release { "release" } else { base }
 }
 
-fn check_session(home: &Path, plan: &Plan, meta_only: bool, opts: &CheckOpts) -> Result<Session> {
+fn check_session(
+    home: &Path,
+    plan: &Plan,
+    meta_only: bool,
+    opts: &CheckOpts,
+    sel: &TargetSel,
+) -> Result<Session> {
     let meta = &plan.meta;
     let ws = cargo::root(meta, &plan.pkg_dir);
-    let mut sess = crate::out::timed("session", || {
+    let mut sess = crate::profile::span(crate::profile::SetupPhase::Session, || {
         Session::with_profile(
             home,
             &plan.pkg_dir,
@@ -262,15 +289,17 @@ fn check_session(home: &Path, plan: &Plan, meta_only: bool, opts: &CheckOpts) ->
             profile_name(opts.release, "dev"),
             &meta.workspace_members,
             &meta.packages,
+            opts.target_dir.as_deref(),
         )
     })?;
     sess.json = opts.json;
     sess.meta_only = meta_only;
     sess.primary = plan.roots.iter().cloned().collect();
     if !meta_only {
-        sess.ship = plan.roots.iter().cloned().collect();
+        sess.ship = targets::ship(plan, sel)?;
+        sess.select = Some(sel.clone());
     }
-    if opts.targets.tests || opts.targets.all {
+    if sel.wants_dev() {
         sess.set_target_tmpdir(target_tmpdir(&sess.settings)?);
     }
     Ok(sess)
@@ -281,53 +310,13 @@ fn check_units(
     plan: &Plan,
     order: &[String],
     meta_only: bool,
-    opts: &CheckOpts,
+    sel: &TargetSel,
 ) -> Result<HashMap<String, compile::Compiled>> {
     let (meta, roots) = (&plan.meta, &plan.roots);
     if meta_only {
-        return schedule::compile_ids_and_extras(
-            sess,
-            meta,
-            order,
-            roots,
-            opts.targets.tests,
-            opts.targets.all,
-        );
+        return schedule::compile_ids_and_extras(sess, meta, order, roots, sel);
     }
-    let compiled = schedule::compile_ids(sess, meta, order)?;
-    artifact::deliver(roots, &compiled, &sess.settings.profile_dir())?;
-    Ok(compiled)
-}
-
-fn record_stats(
-    home: &Path,
-    compiled: &HashMap<String, compile::Compiled>,
-    started: std::time::Instant,
-    op: &str,
-) {
-    let hits = compiled
-        .values()
-        .filter(|c| c.rustc == RustcOutcome::Restored)
-        .count() as u64;
-    let misses = compiled
-        .values()
-        .filter(|c| c.rustc == RustcOutcome::Ran)
-        .count() as u64;
-    record_counts(home, hits, misses, started, op);
-}
-
-fn record_counts(home: &Path, hits: u64, misses: u64, started: std::time::Instant, op: &str) {
-    if let Err(error) = crate::store::bump_stats(home, hits, misses) {
-        crate::out::err(format!("artificer: stats not recorded: {error:#}"));
-    }
-    crate::store::note_build(
-        home,
-        op,
-        hits,
-        misses,
-        started.elapsed().as_millis() as u64,
-        None,
-    );
+    targets::build(sess, plan, order, sel)
 }
 
 fn target_tmpdir(settings: &crate::settings::Settings) -> Result<PathBuf> {
@@ -336,14 +325,19 @@ fn target_tmpdir(settings: &crate::settings::Settings) -> Result<PathBuf> {
     Ok(tmp)
 }
 
-fn sweep_meta(meta: &cargo::Metadata, home: &Path, fallback: &Path) -> Result<()> {
+fn sweep_meta(
+    meta: &cargo::Metadata,
+    home: &Path,
+    fallback: &Path,
+    target: Option<&Path>,
+) -> Result<()> {
     if mods::load(home)?.sweep {
         let workspace = if meta.workspace_root.as_os_str().is_empty() {
             fallback
         } else {
             meta.workspace_root.as_path()
         };
-        let target = config::target_dir(fallback, workspace);
+        let target = config::target_dir(target, fallback, workspace);
         if let Err(e) = sweep::workspace(&target, home, false) {
             crate::out::err(format!("artificer: sweep skipped: {e}"));
         }
@@ -352,9 +346,18 @@ fn sweep_meta(meta: &cargo::Metadata, home: &Path, fallback: &Path) -> Result<()
     Ok(())
 }
 
+mod finish;
+use finish::{finished, record_counts, record_stats};
+
+mod select;
+pub(crate) use select::{Kind, Mode};
+pub use select::{Pick, TargetSel};
+
+mod targets;
+
 mod testing;
-use testing::json_profile;
 pub use testing::{TestOpts, test_package};
+use testing::{json_profile, place_tests};
 
 mod run;
 pub use run::run_cmd;

@@ -35,6 +35,35 @@ pub fn must_link(meta: &Metadata, order: &[String]) -> std::collections::HashSet
     set
 }
 
+pub fn build_only(
+    meta: &Metadata,
+    roots: &[String],
+    order: &[String],
+    dev: bool,
+) -> std::collections::HashSet<String> {
+    let mut runtime: std::collections::HashSet<String> = roots.iter().cloned().collect();
+    let mut stack = roots.to_vec();
+    while let Some(id) = stack.pop() {
+        if package(meta, &id).is_ok_and(Package::is_proc_macro) {
+            continue;
+        }
+        let Ok(n) = node(meta, &id) else {
+            continue;
+        };
+        let tested = dev && roots.contains(&id);
+        for d in &n.deps {
+            let runs = d.usable_for_lib() || (tested && d.usable_for_dev());
+            if runs && runtime.insert(d.pkg.clone()) {
+                stack.push(d.pkg.clone());
+            }
+        }
+    }
+    must_link(meta, order)
+        .into_iter()
+        .filter(|id| !runtime.contains(id))
+        .collect()
+}
+
 impl Metadata {
     fn pkg_ix(&self) -> &HashMap<String, usize> {
         self.pkg_ix.get_or_init(|| {
@@ -136,10 +165,21 @@ pub(crate) fn same_package_id(a: &str, b: &str) -> bool {
     }
 }
 
+const HOST_ID_PREFIX: &str = "host+";
+
+pub fn host_id(id: &str) -> String {
+    format!("{HOST_ID_PREFIX}{id}")
+}
+
+pub(crate) fn is_host_clone(id: &str) -> bool {
+    id.starts_with(HOST_ID_PREFIX)
+}
+
 pub fn id_by_name(meta: &Metadata, name: &str) -> Result<String> {
     let hits: Vec<_> = meta
         .packages
         .iter()
+        .filter(|p| !is_host_clone(&p.id))
         .filter(|p| p.name == name || same_package_id(&p.id, name))
         .collect();
     if hits.is_empty() {
@@ -159,7 +199,7 @@ pub fn root_id(meta: &Metadata, dir: &Path) -> Result<String> {
     if let Some(p) = meta
         .packages
         .iter()
-        .find(|p| p.manifest_path == manifest || p.root() == dir)
+        .find(|p| !is_host_clone(&p.id) && (p.manifest_path == manifest || p.root() == dir))
     {
         return Ok(p.id.clone());
     }

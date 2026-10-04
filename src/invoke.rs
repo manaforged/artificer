@@ -1,33 +1,21 @@
 use crate::cargo::{self, Package};
 use crate::platform::env_path;
 use crate::script::{self, Script};
-use crate::session::Session;
-use crate::settings::{Settings, profile_for};
+use crate::session::{Artifact, Session};
 use anyhow::{Context, Result, bail};
 use serde_json::{Map, Value};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub(crate) fn style(
-    settings: &Settings,
-    cmd: &mut Command,
-    link: bool,
-    pkg: &Package,
-    lto_ok: bool,
-) {
-    if std::env::var_os("ARTIFICER_PASSES").is_some() {
-        cmd.arg("-Ztime-passes");
-    }
+pub(crate) fn style(sess: &Session, cmd: &mut Command, link: bool, pkg: &Package, lto_ok: bool) {
+    let settings = &sess.settings;
     cmd.env_remove("RUSTFLAGS");
     cmd.env_remove("CARGO_ENCODED_RUSTFLAGS");
-    if settings.mods.slim {
-        cmd.arg("-C").arg("debuginfo=line-tables-only");
-    }
-    if !settings.lto {
+    if !settings.lto || sess.build_only.contains(&pkg.id) {
         cmd.arg("-C").arg("embed-bitcode=no");
     }
-    for a in profile_for(&settings.profile, lto_ok) {
+    for a in sess.profile_args(pkg, lto_ok) {
         cmd.arg(a);
     }
     for a in settings
@@ -40,6 +28,12 @@ pub(crate) fn style(
         cmd.arg(a);
     }
     for a in &settings.threads {
+        cmd.arg(a);
+    }
+    for a in crate::unit_key::trusted_args(sess, pkg) {
+        cmd.arg(a);
+    }
+    for a in crate::unit_key::early_args(sess) {
         cmd.arg(a);
     }
     if settings.mods.slim {
@@ -86,13 +80,23 @@ pub(crate) fn rustc_base(
 ) -> Command {
     let crate_name = target.name.replace('-', "_");
     cmd.args(["--crate-name", &crate_name, "--edition", &target.edition]);
-    style(&sess.settings, &mut cmd, link, pkg, lto_ok);
+    style(sess, &mut cmd, link, pkg, lto_ok);
     for a in &sess.settings.codegen {
         cmd.arg(a);
     }
-    cmd.arg("--remap-path-prefix")
-        .arg(format!("{}=.", pkg.root().display()));
+    let mut remaps = [
+        (pkg.root().to_path_buf(), "."),
+        (env_path(&sess.settings.home), crate::inputs::STORE_TOKEN),
+    ];
+    remaps.sort_by_key(|(from, _)| from.as_os_str().len());
+    for (from, to) in remaps {
+        cmd.arg("--remap-path-prefix")
+            .arg(format!("{}={to}", from.display()));
+    }
     cmd.arg("--out-dir").arg(out);
+    if let Some(dir) = sess.settings.incremental_dir(pkg) {
+        cmd.arg("-C").arg(format!("incremental={}", dir.display()));
+    }
     if pkg.source.is_some() {
         cmd.arg("--cap-lints").arg("allow");
     }
@@ -133,23 +137,16 @@ pub(crate) fn apply_script(cmd: &mut Command, s: &Script) {
     }
 }
 
-pub(crate) fn add_natives(cmd: &mut Command, sess: &Session) {
+pub(crate) fn add_natives(cmd: &mut Command, sess: &Session, root: &str, dev: bool) {
+    let linked = sess.link_set(root, dev);
     let natives = sess.natives.lock().expect("natives");
+    let mut owners: Vec<&String> = natives.keys().filter(|id| linked.contains(*id)).collect();
+    owners.sort();
     let mut seen = std::collections::HashSet::new();
-    for out in natives.values() {
+    for out in owners.into_iter().filter_map(|id| natives.get(id)) {
         for search in script::link_search(out) {
-            if seen.insert(format!("L{search}")) {
+            if seen.insert(search.clone()) {
                 cmd.arg("-L").arg(search);
-            }
-        }
-        for lib in script::link_libs(out) {
-            if seen.insert(format!("l{lib}")) {
-                cmd.arg("-l").arg(lib);
-            }
-        }
-        for arg in script::link_args(out) {
-            if seen.insert(format!("a{arg}")) {
-                cmd.arg("-C").arg(format!("link-arg={arg}"));
             }
         }
     }
@@ -159,6 +156,21 @@ pub(crate) fn add_natives(cmd: &mut Command, sess: &Session) {
 pub(crate) enum ExternSet {
     Lib,
     Test,
+}
+
+pub(crate) const EARLY_DIR: &str = "early";
+
+pub(crate) fn early_rmeta(art: &Artifact) -> Option<PathBuf> {
+    let name = art.path.with_extension("rmeta");
+    let file = art.path.parent()?.join(EARLY_DIR).join(name.file_name()?);
+    file.is_file().then_some(file)
+}
+
+pub(crate) fn meta_file(art: &Artifact, early: bool) -> PathBuf {
+    early
+        .then(|| early_rmeta(art))
+        .flatten()
+        .unwrap_or_else(|| art.rmeta.clone().unwrap_or_else(|| art.path.clone()))
 }
 
 pub(crate) fn add_externs(
@@ -175,8 +187,14 @@ pub(crate) fn add_externs(
     let mut dirs: Vec<&Path> = arts.values().filter_map(|a| a.path.parent()).collect();
     dirs.sort_unstable();
     dirs.dedup();
+    let early = crate::unit_key::early_consumer(sess, &node.id);
     for dir in dirs {
         cmd.arg("-L").arg(format!("dependency={}", dir.display()));
+        let early_dir = dir.join(EARLY_DIR);
+        if early && early_dir.is_dir() {
+            cmd.arg("-L")
+                .arg(format!("dependency={}", early_dir.display()));
+        }
     }
     for d in &node.deps {
         let ok = match set {
@@ -189,9 +207,10 @@ pub(crate) fn add_externs(
         let Some(art) = arts.get(&d.pkg) else {
             bail!("missing artifact for {}", d.pkg);
         };
-        let path = match (prefer_meta, &art.rmeta) {
-            (true, Some(rmeta)) => rmeta,
-            _ => &art.path,
+        let path = if prefer_meta {
+            meta_file(art, early)
+        } else {
+            art.path.clone()
         };
         cmd.arg("--extern")
             .arg(format!("{}={}", d.name, path.display()));
@@ -247,4 +266,8 @@ pub(crate) fn set_target_tmpdir(cmd: &mut Command, sess: &Session, enabled: bool
 }
 
 mod diagnostics;
-pub(crate) use diagnostics::{note_rustc, primary_env, replay, run_rustc};
+pub(crate) use diagnostics::{Early, note_rustc, primary_env, replay, run_rustc};
+
+#[cfg(test)]
+#[path = "invoke_tests.rs"]
+mod tests;

@@ -9,9 +9,8 @@ pub struct BuildArgs {
     pub color: Option<ColorChoice>,
     pub jobs: Option<usize>,
     pub packages: Vec<String>,
-    pub bin: Option<String>,
-    pub example: Option<String>,
     pub dir: Option<PathBuf>,
+    pub target_dir: Option<PathBuf>,
     pub no_run: bool,
     pub json: bool,
     pub all_features: bool,
@@ -20,12 +19,10 @@ pub struct BuildArgs {
     pub meta_flags: Vec<String>,
     pub release: bool,
     pub workspace: bool,
-    pub tests: bool,
-    pub lib_only: bool,
     pub doc_only: bool,
-    pub only: Vec<String>,
-    pub all_targets: bool,
+    pub select: artificer::TargetSel,
     pub pass: Vec<String>,
+    pub timings: bool,
 }
 
 pub enum Parsed {
@@ -178,13 +175,15 @@ impl<'a> Parser<'a> {
                 self.out.dir = Some(parent);
                 Ok(Flow::Next)
             }),
-            "--bin" => self.value(name, attached).map(|v| {
-                self.out.bin = Some(v.to_string());
-                Flow::Next
-            }),
-            "--example" => self.value(name, attached).map(|v| {
-                self.out.example = Some(v.to_string());
-                Flow::Next
+            "--target-dir" => self.value(name, attached).and_then(|path| {
+                if self.out.target_dir.is_some() {
+                    return Err(fallback("multiple target directories belong to cargo"));
+                }
+                let dir = std::path::absolute(path).map_err(|e| {
+                    fallback(format!("target directory {path} belongs to cargo: {e}"))
+                })?;
+                self.out.target_dir = Some(dir);
+                Ok(Flow::Next)
             }),
             "--workspace" if self.cmd() != "run" => {
                 self.out.workspace = true;
@@ -194,34 +193,6 @@ impl<'a> Parser<'a> {
             _ => return None,
         };
         Some(step)
-    }
-
-    fn targets(&mut self, arg: &str, name: &str, attached: Option<&'a str>) -> Option<Step> {
-        if name == "--test" {
-            if self.cmd() != "test" {
-                return Some(Err(fallback(format!("{arg} belongs to cargo"))));
-            }
-            return Some(self.value(name, attached).map(|v| {
-                self.out.only.push(v.to_string());
-                Flow::Next
-            }));
-        }
-        let (_, commands, toggle, refusal) = TOGGLES.iter().find(|(flag, ..)| *flag == name)?;
-        if commands.contains(&self.cmd()) {
-            return Some(set(self.toggle(*toggle)));
-        }
-        let reason = refusal.map_or_else(|| format!("{arg} belongs to cargo"), str::to_string);
-        Some(Err(fallback(reason)))
-    }
-
-    fn toggle(&mut self, toggle: Toggle) -> &mut bool {
-        match toggle {
-            Toggle::NoRun => &mut self.out.no_run,
-            Toggle::Doc => &mut self.out.doc_only,
-            Toggle::Lib => &mut self.out.lib_only,
-            Toggle::Tests => &mut self.out.tests,
-            Toggle::AllTargets => &mut self.out.all_targets,
-        }
     }
 
     fn profile(&mut self, _arg: &str, name: &str, attached: Option<&'a str>) -> Option<Step> {
@@ -312,6 +283,10 @@ impl<'a> Parser<'a> {
             "--quiet" | "-q" => set(&mut self.out.quiet),
             "--verbose" | "-v" => set(&mut self.out.verbose),
             "--keep-going" => Err(fallback("--keep-going belongs to cargo")),
+            "--timings" => match attached {
+                None | Some("html") => set(&mut self.out.timings),
+                Some(other) => Err(fallback(format!("--timings={other} belongs to cargo"))),
+            },
             "--color" => self
                 .value(name, attached)
                 .and_then(|value| color_choice(Some(value)))
@@ -343,19 +318,8 @@ impl<'a> Parser<'a> {
     }
 
     fn finish(self) -> Parsed {
-        let a = &self.out;
-        let cmd = a.cmd.as_str();
-        if a.example.is_some() && cmd != "run" {
-            return fallback(format!("--example on {cmd} belongs to cargo"));
-        }
-        if cmd == "build" && (a.tests || a.all_targets) {
-            return fallback("build test-target selection belongs to cargo");
-        }
-        if cmd != "run" && (a.bin.is_some() || a.example.is_some()) {
-            return fallback("--bin/--example target selection belongs to cargo");
-        }
-        if cmd == "test" && a.all_targets {
-            return fallback("test --all-targets belongs to cargo");
+        if let Some(reason) = self.selection_reason() {
+            return fallback(reason);
         }
         Parsed::Build(Box::new(self.out))
     }
@@ -370,7 +334,6 @@ fn fallback(reason: impl Into<String>) -> Parsed {
     Parsed::Fallback(reason.into())
 }
 
+mod targets;
 mod values;
-use values::{
-    COMMANDS, DIRECT_ONLY, TOGGLES, Toggle, VALUED, attached, color_choice, manifest_dir, value,
-};
+use values::{COMMANDS, DIRECT_ONLY, VALUED, attached, color_choice, manifest_dir, value};

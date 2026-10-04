@@ -21,6 +21,10 @@ pub(super) enum Sub {
     Export,
     Import,
     Mods,
+    Remote,
+    Pull,
+    Push,
+    Profile,
 }
 
 type Opt = (&'static str, &'static str);
@@ -49,21 +53,46 @@ const PACKAGE: &[Opt] = &[
 ];
 const WORKSPACE: &[Opt] = &[("--workspace", "Build every workspace member")];
 const TARGETS: &[Opt] = &[
-    ("--tests", "Also compile test targets"),
-    ("--all-targets", "Compile every target"),
+    ("--lib", "Only the library"),
+    ("--bin <NAME>", "Only the named binary (repeatable)"),
+    ("--bins", "All binaries"),
+    ("--example <NAME>", "Only the named example (repeatable)"),
+    ("--examples", "All examples"),
+    (
+        "--test <NAME>",
+        "Only the named integration test (repeatable)",
+    ),
+    ("--tests", "All targets with `test = true`"),
     ("--message-format <FMT>", "Diagnostic format"),
+    (
+        "--timings",
+        "Write the HTML timing report to target/cargo-timings",
+    ),
+];
+const CHECK_TARGETS: &[Opt] = &[
+    ("--bench <NAME>", "Only the named benchmark (repeatable)"),
+    ("--all-targets", "Every target"),
 ];
 const TEST: &[Opt] = &[
     ("--no-run", "Compile, but do not run the tests"),
     ("--lib", "Test only the library"),
     ("--doc", "Run only doctests"),
     ("--test <NAME>", "Run only the named integration test"),
+    ("--no-fail-fast", "Run every test binary after a failure"),
     ("--message-format <FMT>", "Diagnostic format"),
+    (
+        "--timings",
+        "Write the HTML timing report to target/cargo-timings",
+    ),
     ("-- <ARGS>", "Arguments for the test harness"),
 ];
 const RUN: &[Opt] = &[
     ("--bin <NAME>", "Binary to run"),
     ("--example <NAME>", "Example to run"),
+    (
+        "--timings",
+        "Write the HTML timing report to target/cargo-timings",
+    ),
     ("-- <ARGS>", "Arguments for the program"),
 ];
 const GLOBAL: &[Opt] = &[
@@ -74,13 +103,13 @@ const GLOBAL: &[Opt] = &[
 ];
 const HELP_ONLY: &[Opt] = &[("-h, --help", "Print help")];
 
-const ENTRIES: [Entry; 19] = [
+const ENTRIES: [Entry; 23] = [
     Entry {
         sub: Sub::Check,
         name: "check",
         summary: "Check a package or workspace",
         usage: "artificer check [OPTIONS] [DIR]",
-        options: &[PACKAGE, WORKSPACE, TARGETS, GLOBAL],
+        options: &[PACKAGE, WORKSPACE, TARGETS, CHECK_TARGETS, GLOBAL],
     },
     Entry {
         sub: Sub::Build,
@@ -153,6 +182,24 @@ const ENTRIES: [Entry; 19] = [
         options: &[&[("--limit <N>", "Reasons to show (default 5)")], HELP_ONLY],
     },
     Entry {
+        sub: Sub::Profile,
+        name: "profile",
+        summary: "Show where a build spent its time",
+        usage: "artificer profile [ID] [--json] [--trace FILE] [--html FILE] | list [--limit N] [--json] | diff BASE HEAD [--json]",
+        options: &[
+            &[
+                ("<ID>", "Profile ID or unique prefix (default: newest)"),
+                ("--json", "Print one JSON document"),
+                ("--trace <FILE>", "Write a Chrome trace for Perfetto"),
+                ("--html <FILE>", "Write a self-contained HTML report"),
+                ("list", "List recorded builds, newest first"),
+                ("--limit <N>", "Builds to list (default 20)"),
+                ("diff <BASE> <HEAD>", "Compare two builds"),
+            ],
+            HELP_ONLY,
+        ],
+    },
+    Entry {
         sub: Sub::Env,
         name: "env",
         summary: "Print a command that adds the Cargo shim to PATH",
@@ -177,12 +224,18 @@ const ENTRIES: [Entry; 19] = [
         sub: Sub::Install,
         name: "install",
         summary: "Install the cargo shim and put it first on PATH",
-        usage: "artificer install [--no-modify-path]",
+        usage: "artificer install [--no-modify-path] [--remote LOCATION]",
         options: &[
-            &[(
-                "--no-modify-path",
-                "Print the PATH line instead of editing profiles",
-            )],
+            &[
+                (
+                    "--no-modify-path",
+                    "Print the PATH line instead of editing profiles",
+                ),
+                (
+                    "--remote <LOCATION>",
+                    "Set the remote store and start the first pull",
+                ),
+            ],
             HELP_ONLY,
         ],
     },
@@ -219,6 +272,42 @@ const ENTRIES: [Entry; 19] = [
         summary: "List or change optional compile modes",
         usage: "artificer mods [on|off NAME]",
         options: &[HELP_ONLY],
+    },
+    Entry {
+        sub: Sub::Remote,
+        name: "remote",
+        summary: "Show, set, or clear the remote store that pull reads",
+        usage: "artificer remote [set LOCATION | off]",
+        options: &[
+            &[
+                (
+                    "set <LOCATION>",
+                    "HOST:/ABSOLUTE/PATH over ssh, or an absolute directory",
+                ),
+                ("off", "Clear the remote"),
+            ],
+            HELP_ONLY,
+        ],
+    },
+    Entry {
+        sub: Sub::Pull,
+        name: "pull",
+        summary: "Add missing units from the remote store",
+        usage: "artificer pull",
+        options: &[HELP_ONLY],
+    },
+    Entry {
+        sub: Sub::Push,
+        name: "push",
+        summary: "Send units the remote store lacks to it",
+        usage: "artificer push [--units FILE]",
+        options: &[
+            &[(
+                "--units <FILE>",
+                "Send only the units named in FILE, one per line",
+            )],
+            HELP_ONLY,
+        ],
     },
 ];
 

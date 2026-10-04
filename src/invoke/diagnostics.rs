@@ -1,37 +1,12 @@
 use super::*;
+use crate::cargo::TargetKind;
+use crate::schedule::MetaStage;
 
 pub(crate) const DIAGNOSTICS: &str = "diagnostics";
 const ABORTING: &str = "aborting due to";
 const ERROR_LEVELS: [&str; 2] = ["error", "error: internal compiler error"];
 const PATH_MARKERS: [&str; 2] = ["--> ", "::: "];
 const REMAPPED: [&str; 2] = ["./", ".\\"];
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum TargetKind {
-    Lib,
-    Bin,
-    Test,
-    Example,
-    Bench,
-    BuildScript,
-}
-
-impl TargetKind {
-    fn of(target: &cargo::Target) -> Self {
-        let kinds = target.kind.iter().map(String::as_str);
-        kinds
-            .filter_map(|kind| match kind {
-                "bin" => Some(Self::Bin),
-                "test" => Some(Self::Test),
-                "example" => Some(Self::Example),
-                "bench" => Some(Self::Bench),
-                "custom-build" => Some(Self::BuildScript),
-                _ => None,
-            })
-            .next()
-            .unwrap_or(Self::Lib)
-    }
-}
 
 fn unit_label(target: &cargo::Target, harness: bool) -> String {
     let name = &target.name;
@@ -73,17 +48,100 @@ fn source_prefix(sess: &Session, pkg: &Package) -> String {
     }
 }
 
+pub(crate) struct Early {
+    pub(crate) rmeta: PathBuf,
+    pub(crate) early_rmeta: PathBuf,
+    pub(crate) artifact: Artifact,
+}
+
+#[derive(serde::Deserialize)]
+struct Notice {
+    artifact: PathBuf,
+    emit: String,
+}
+
+const ARTIFACT_NOTICE: &[u8] = b"{\"$message_type\":\"artifact\"";
+const METADATA_EMIT: &str = "metadata";
+const EARLY_METADATA_EMIT: &str = "early-metadata";
+
+#[derive(Debug, PartialEq)]
+enum Emitted {
+    Metadata(PathBuf),
+    EarlyMetadata(PathBuf),
+    Other,
+}
+
+fn artifact_notice(line: &[u8]) -> Option<Emitted> {
+    if !line.starts_with(ARTIFACT_NOTICE) {
+        return None;
+    }
+    let notice: Notice = serde_json::from_slice(line).ok()?;
+    Some(match notice.emit.as_str() {
+        METADATA_EMIT => Emitted::Metadata(notice.artifact),
+        EARLY_METADATA_EMIT => Emitted::EarlyMetadata(notice.artifact),
+        _ => Emitted::Other,
+    })
+}
+
+fn stream(
+    cmd: &mut Command,
+    sess: &Session,
+    pkg: &Package,
+    file: File,
+    early: Option<&Early>,
+) -> std::io::Result<std::process::ExitStatus> {
+    use std::io::Write;
+    let signal = early.and_then(|_| crate::schedule::signal());
+    let mut writer = std::io::BufWriter::new(file);
+    let status = crate::profile::status_lines(cmd, |line| {
+        let Some(notice) = artifact_notice(line) else {
+            writer.write_all(line)?;
+            return writer.write_all(b"\n");
+        };
+        let ready = early.and_then(|early| match notice {
+            Emitted::Metadata(path) if path.file_name() == early.rmeta.file_name() => {
+                Some((early, MetaStage::Full))
+            }
+            Emitted::EarlyMetadata(path) if path.file_name() == early.early_rmeta.file_name() => {
+                Some((early, MetaStage::Early))
+            }
+            _ => None,
+        });
+        if let Some((early, stage)) = ready {
+            sess.put(pkg.id.clone(), early.artifact.clone());
+            if let Some(signal) = &signal {
+                signal.metadata_ready(stage);
+            }
+        }
+        Ok(())
+    })?;
+    writer.flush()?;
+    Ok(status)
+}
+
 pub(crate) fn run_rustc(
     cmd: &mut Command,
     sess: &Session,
     pkg: &Package,
     target: &cargo::Target,
     out: &Path,
+    early: Option<&Early>,
 ) -> Result<()> {
-    crate::out::timed(&format!("rustc {}", pkg.name), || {
-        let _permit = crate::jobs::acquire(&sess.settings.home)?;
-        crate::jobs::isolate(cmd);
-        run_rustc_inner(cmd, sess, pkg, target, out)
+    let (_permit, _token) = crate::profile::span(crate::profile::UnitPhase::Permit, || {
+        let permit = crate::jobs::acquire(&sess.settings.home)?;
+        let token = sess
+            .build_pool
+            .as_ref()
+            .map(|pool| pool.take())
+            .transpose()?;
+        anyhow::Ok((permit, token))
+    })?;
+    match &sess.build_pool {
+        Some(pool) => pool.configure(cmd),
+        None => crate::jobs::isolate(cmd),
+    }
+    crate::profile::span(crate::profile::ProcessPhase::Rustc, || {
+        run_rustc_inner(cmd, sess, pkg, target, out, early)
     })
 }
 
@@ -93,23 +151,36 @@ pub(crate) fn run_rustc_inner(
     pkg: &Package,
     target: &cargo::Target,
     out: &Path,
+    early: Option<&Early>,
 ) -> Result<()> {
     primary_env(cmd, sess, pkg);
-    cmd.args(["--error-format=json", "--json=diagnostic-rendered-ansi"]);
+    cmd.args([
+        "--error-format=json",
+        "--json=diagnostic-rendered-ansi,artifacts",
+    ]);
     if std::env::var_os("ARTIFICER_TRACE").is_some() || crate::out::trace() {
-        eprintln!("ARTIFICER_CMD {}: {:?}", pkg.name, cmd);
+        crate::out::diag(format!("ARTIFICER_CMD {}: {:?}", pkg.name, cmd));
     }
     let path = out.join(DIAGNOSTICS);
     let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
-    cmd.stderr(file);
     sess.announce(pkg, TargetKind::of(target) == TargetKind::BuildScript);
-    let status = cmd.status().context("rustc")?;
+    let passes = crate::profile::passes_enabled();
+    if passes {
+        cmd.args(crate::profile::FLAGS);
+        cmd.env(crate::profile::BOOTSTRAP.0, crate::profile::BOOTSTRAP.1);
+    }
+    let status = stream(cmd, sess, pkg, file, early).context("rustc")?;
+    if passes {
+        crate::profile::note_passes(
+            crate::profile::harvest(&path).with_context(|| format!("read {}", path.display()))?,
+        );
+    }
     let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
     let errors = show(sess, pkg, target, &bytes);
     if !status.success() {
         bail!(failure(pkg, target, cmd, errors));
     }
-    crate::inputs::record(out, pkg.root(), cmd)?;
+    crate::inputs::record(&sess.settings.home, out, pkg.root(), cmd)?;
     Ok(())
 }
 
@@ -275,3 +346,7 @@ pub(crate) fn note_rustc(home: &Path) {
         drop(writeln!(f, "ran"));
     }
 }
+
+#[cfg(test)]
+#[path = "diagnostics_tests.rs"]
+mod tests;

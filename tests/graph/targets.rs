@@ -322,3 +322,43 @@ fn release_is_a_profile_dimension() {
     .unwrap();
     assert_eq!(dev2, 1, "the dev unit survives beside the release unit");
 }
+
+#[test]
+fn run_without_bin_uses_default_run() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let a = tmp.path().join("a");
+    fs::create_dir_all(a.join("src/bin")).unwrap();
+    fs::write(
+        a.join("Cargo.toml"),
+        "[package]\nname = \"pick\"\nversion = \"0.1.0\"\nedition = \"2021\"\ndefault-run = \"pick\"\n",
+    )
+    .unwrap();
+    fs::write(
+        a.join("src/main.rs"),
+        "fn main() { std::process::exit(3) }\n",
+    )
+    .unwrap();
+    fs::write(
+        a.join("src/bin/other.rs"),
+        "fn main() { std::process::exit(4) }\n",
+    )
+    .unwrap();
+    let st = Command::new("cargo")
+        .args(["generate-lockfile", "--manifest-path"])
+        .arg(a.join("Cargo.toml"))
+        .status()
+        .unwrap();
+    assert!(st.success());
+    let code = artificer::run_cmd(
+        &a,
+        &[],
+        None,
+        None,
+        &home,
+        artificer::CheckOpts::default(),
+        &[],
+    )
+    .unwrap();
+    assert_eq!(code, 3, "default-run picks the package's main bin");
+}

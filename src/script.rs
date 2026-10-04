@@ -4,20 +4,22 @@ use anyhow::{Result, bail};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const STAMP_FILE: &str = "stamp";
+
+#[derive(Clone)]
 pub struct Script {
     pub(crate) lease: std::sync::Arc<std::fs::File>,
     pub out_dir: PathBuf,
     pub output: String,
+    pub stamp: String,
     pub restored: bool,
 }
 
-impl Script {
-    pub fn stamp(&self) -> String {
-        let mut key = Key::new();
-        key.feed(self.output.as_bytes());
-        watch(&mut key, &self.out_dir);
-        key.full_digest()
-    }
+fn stamp_of(home: &Path, recorded: &str, out_dir: &Path) -> String {
+    let mut key = Key::new();
+    key.feed(recorded.as_bytes());
+    watch(&mut key, home, out_dir);
+    key.full_digest()
 }
 
 pub fn ensure(
@@ -32,6 +34,7 @@ pub fn ensure(
     let Some(script) = pkg.script_target() else {
         bail!("ensure called without custom-build target");
     };
+    let source_key = sess.source_key(pkg)?;
     let job = Job {
         pkg,
         settings,
@@ -40,66 +43,96 @@ pub fn ensure(
         externs,
         search,
         dep_env,
-        opt_level: settings.profile_value(pkg, "opt-level").unwrap_or("0"),
-        debug: settings
+        opt_level: sess.profile_value(pkg, "opt-level").unwrap_or("0"),
+        debug: sess
             .profile_value(pkg, "debuginfo")
             .is_some_and(|v| v != "0" && v != "none"),
+        source_key: &source_key,
     };
-    let digest = job.digest()?;
-    if std::env::var("ARTIFICER_DEBUG_KEY").is_ok_and(|w| w == pkg.name) {
-        eprintln!(
-            "SCRIPT {} digest={digest} feats={features:?} externs={}",
-            pkg.name,
-            externs.len(),
-        );
-    }
+    let bin_key = job.bin_digest()?;
+    let bin_unit = format!("{}{bin_key}", Kind::ScriptBin.prefix());
+    let digest = job.digest(&bin_unit)?;
+    debug_key(pkg, &digest, features, externs.len());
     let action = Action::begin(&settings.home, Kind::Script, &digest)?;
     let out_dir = action.out.clone();
     let bin_dir = action.slot.dir.join("bin");
-    let mut rustc_cmd = job.rustc_cmd(&bin_dir);
-    if let Some(output) = restorable(&action, &job, &rustc_cmd) {
+    if let Some(recorded) = restorable(&action, &job, &bin_unit) {
+        let stamp = fs::read_to_string(action.slot.dir.join(STAMP_FILE))
+            .unwrap_or_else(|_| stamp_of(&settings.home, &recorded, &out_dir));
         return Ok(Script {
             lease: action.lease()?,
             out_dir,
-            output,
+            output: crate::inputs::concrete(&settings.home, &recorded),
+            stamp,
             restored: true,
         });
     }
 
     action.invalidate()?;
     fs::create_dir_all(&out_dir)?;
-    fs::create_dir_all(&bin_dir)?;
-    rustc_cmd.arg(&script.src_path);
-    crate::invoke::run_rustc(&mut rustc_cmd, sess, pkg, script, &bin_dir)?;
+    let (bin_lease, compiled) = compile(sess, &job, &bin_key)?;
+    crate::artifact::place_exe(&compiled.join(job::bin_file()), &bin_dir, &job::bin_file())?;
+    sess.retain(bin_lease);
     let output = job.run(&bin_dir, &out_dir)?;
-    record(&action, &job, &output)?;
+    let recorded = crate::inputs::portable(&settings.home, &output);
+    let stamp = stamp_of(&settings.home, &recorded, &out_dir);
+    record(&action, &job, &recorded, &stamp)?;
     Ok(Script {
         lease: action.lease()?,
         out_dir,
         output,
+        stamp,
         restored: false,
     })
 }
 
-fn record(action: &Action, job: &Job, output: &str) -> Result<()> {
+fn record(action: &Action, job: &Job, recorded: &str, stamp: &str) -> Result<()> {
     let dir = &action.slot.dir;
-    fs::write(dir.join("output"), output)?;
+    fs::write(dir.join("output"), recorded)?;
+    fs::write(dir.join(STAMP_FILE), stamp)?;
     action.finish()?;
-    let stamp = input_stamp(job.pkg, output, &action.out, &job.settings.workspace_root);
+    let settings = job.settings;
+    let stamp = input_stamp(job.pkg, settings, recorded, &action.out);
     fs::write(dir.join("script-inputs"), stamp)?;
     Ok(())
 }
 
-fn restorable(action: &Action, job: &Job, rustc_cmd: &std::process::Command) -> Option<String> {
+fn compile(
+    sess: &crate::session::Session,
+    job: &Job,
+    bin_key: &str,
+) -> Result<(std::sync::Arc<std::fs::File>, PathBuf)> {
+    let (pkg, home) = (job.pkg, &job.settings.home);
+    let action = Action::begin(home, Kind::ScriptBin, bin_key)?;
+    let bin_dir = action.out.clone();
+    let mut rustc_cmd = job.rustc_cmd(&bin_dir);
+    if action.hit() && crate::inputs::matches(home, &bin_dir, pkg.root(), &rustc_cmd) {
+        return Ok((action.lease()?, bin_dir));
+    }
+    action.invalidate()?;
+    fs::create_dir_all(&bin_dir)?;
+    rustc_cmd.arg(&job.script.src_path);
+    crate::invoke::run_rustc(&mut rustc_cmd, sess, pkg, job.script, &bin_dir, None)?;
+    action.finish()?;
+    Ok((action.lease()?, bin_dir))
+}
+
+fn restorable(action: &Action, job: &Job, bin_unit: &str) -> Option<String> {
     let pkg = job.pkg;
     let dir = &action.slot.dir;
-    if !action.hit() || !crate::inputs::matches(&dir.join("bin"), pkg.root(), rustc_cmd) {
+    if !action.hit() {
         return None;
     }
-    let output = fs::read_to_string(dir.join("output")).ok()?;
+    let home = &job.settings.home;
+    let compiled = crate::store::Slot::new(home, bin_unit).out_dir();
+    if !crate::inputs::matches(home, &compiled, pkg.root(), &job.rustc_cmd(&compiled)) {
+        return None;
+    }
+    let recorded = fs::read_to_string(dir.join("output")).ok()?;
     let stamp = fs::read_to_string(dir.join("script-inputs")).ok()?;
-    let current = input_stamp(pkg, &output, &action.out, &job.settings.workspace_root);
-    (stamp == current).then_some(output)
+    let settings = job.settings;
+    let current = input_stamp(pkg, settings, &recorded, &action.out);
+    (stamp == current).then_some(recorded)
 }
 
 mod job;
@@ -112,3 +145,12 @@ pub use directives::{
 };
 
 use directives::input_stamp;
+
+fn debug_key(pkg: &Package, digest: &str, features: &[String], externs: usize) {
+    if std::env::var("ARTIFICER_DEBUG_KEY").is_ok_and(|w| w == pkg.name) {
+        crate::out::diag(format!(
+            "SCRIPT {} digest={digest} feats={features:?} externs={externs}",
+            pkg.name,
+        ));
+    }
+}

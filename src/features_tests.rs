@@ -10,11 +10,16 @@ bincode v2.0.1 (registry)|alloc,std (*)
 
 ";
     let map = parse_tree(text);
-    let glam = &map[&("glam".to_string(), "0.32.1".to_string())];
+    let key = |name: &str, version: &str| TreePkg {
+        name: name.to_string(),
+        version: version.to_string(),
+        source: TreeSource::Other("registry".to_string()),
+    };
+    let glam = &map[&(key("glam", "0.32.1"), Side::Normal)];
     assert_eq!(glam, &["bytemuck", "default", "serde", "std"]);
-    let serde = &map[&("serde_core".to_string(), "1.0.228".to_string())];
+    let serde = &map[&(key("serde_core", "1.0.228"), Side::Normal)];
     assert!(serde.is_empty());
-    let bincode = &map[&("bincode".to_string(), "2.0.1".to_string())];
+    let bincode = &map[&(key("bincode", "2.0.1"), Side::Normal)];
     assert_eq!(bincode, &["alloc", "std"]);
     assert!(
         map.values()

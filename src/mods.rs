@@ -28,6 +28,8 @@ pub struct Mods {
     #[serde(rename = "meta-cache")]
     pub meta_cache: bool,
     pub threads: bool,
+    pub trust: bool,
+    pub early: bool,
     pub serve: bool,
 }
 
@@ -42,6 +44,8 @@ impl Default for Mods {
             linker: false,
             meta_cache: true,
             threads: false,
+            trust: true,
+            early: false,
             serve: false,
         }
     }
@@ -58,40 +62,43 @@ impl Mods {
             "linker",
             "meta-cache",
             "threads",
+            "trust",
+            "early",
             "serve",
         ]
     }
 
-    pub fn get(&self, name: &str) -> Result<bool> {
-        Ok(match name {
-            "enabled" => self.enabled,
-            "sweep" => self.sweep,
-            "cranelift" => self.cranelift,
-            "rmeta" => self.rmeta,
-            "slim" => self.slim,
-            "linker" => self.linker,
-            "meta-cache" => self.meta_cache,
-            "threads" => self.threads,
-            "serve" => self.serve,
-            other => bail!("unknown mod: {other}"),
+    fn field(&mut self, name: &str) -> Option<&mut bool> {
+        Some(match name {
+            "enabled" => &mut self.enabled,
+            "sweep" => &mut self.sweep,
+            "cranelift" => &mut self.cranelift,
+            "rmeta" => &mut self.rmeta,
+            "slim" => &mut self.slim,
+            "linker" => &mut self.linker,
+            "meta-cache" => &mut self.meta_cache,
+            "threads" => &mut self.threads,
+            "trust" => &mut self.trust,
+            "early" => &mut self.early,
+            "serve" => &mut self.serve,
+            _ => return None,
         })
     }
 
+    pub fn get(&self, name: &str) -> Result<bool> {
+        match self.clone().field(name) {
+            Some(on) => Ok(*on),
+            None => bail!("unknown mod: {name}"),
+        }
+    }
+
     pub fn set(&mut self, name: &str, on: bool) -> Result<()> {
-        match name {
-            "enabled" => self.enabled = on,
-            "sweep" => self.sweep = on,
-            "cranelift" => self.cranelift = on,
-            "rmeta" => self.rmeta = on,
-            "slim" => self.slim = on,
-            "linker" => self.linker = on,
-            "meta-cache" => self.meta_cache = on,
-            "threads" => self.threads = on,
-            "serve" if on && cfg!(windows) => {
-                bail!("the serve daemon is not available on Windows")
-            }
-            "serve" => self.serve = on,
-            other => bail!("unknown mod: {other}"),
+        if name == "serve" && on && cfg!(windows) {
+            bail!("the serve daemon is not available on Windows");
+        }
+        match self.field(name) {
+            Some(field) => *field = on,
+            None => bail!("unknown mod: {name}"),
         }
         Ok(())
     }

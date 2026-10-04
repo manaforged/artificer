@@ -1,9 +1,7 @@
 use crate::action::Key;
 use crate::cargo::{self, Package};
 use crate::invoke;
-use crate::key;
 use crate::session::Session;
-use crate::settings;
 use anyhow::Result;
 use std::path::Path;
 
@@ -19,12 +17,39 @@ fn compile_env(sess: &Session, pkg: &Package, name: &str, target_tmpdir: bool) -
             .flatten()
             .map(|path| path.display().to_string()),
         "OUT_DIR" => None,
-        _ => std::env::var(name).ok(),
+        _ => sess
+            .settings
+            .env_value(name)
+            .and_then(|value| value.into_string().ok()),
     }
 }
 
 fn from_registry(pkg: &Package) -> bool {
     from_registry_in(pkg, &cargo::cargo_home())
+}
+
+pub(crate) fn trusted_args<'a>(sess: &'a Session, pkg: &Package) -> &'a [String] {
+    registry_only(pkg, &cargo::cargo_home(), &sess.settings.fork.trusted)
+}
+
+pub(crate) fn early_consumer(sess: &Session, id: &str) -> bool {
+    sess.meta_only && !sess.settings.fork.early.is_empty() && !sess.must_link.contains(id)
+}
+
+pub(crate) fn early_args(sess: &Session) -> &[String] {
+    if sess.meta_only {
+        &sess.settings.fork.early
+    } else {
+        &[]
+    }
+}
+
+fn registry_only<'a>(pkg: &Package, cargo_home: &Path, args: &'a [String]) -> &'a [String] {
+    if from_registry_in(pkg, cargo_home) {
+        args
+    } else {
+        &[]
+    }
 }
 
 fn from_registry_in(pkg: &Package, cargo_home: &Path) -> bool {
@@ -70,6 +95,9 @@ fn clippy(sess: &Session, pkg: &Package) -> Option<String> {
     ))
 }
 
+mod feed;
+use feed::{Fed, Feed, feed_inputs};
+
 pub(crate) const DEPS_FILE: &str = "deps.blake3";
 
 pub(crate) fn dep_manifest(
@@ -89,6 +117,7 @@ pub(crate) fn dep_manifest(
             .unwrap_or_default();
         lines.push(format!("{name} {}", sess.artifact_hash(&art.path)?));
     }
+    let early = early_consumer(sess, &node.id);
     for d in &node.deps {
         let usable = if tests {
             d.usable_for_lib() || d.usable_for_dev()
@@ -101,7 +130,7 @@ pub(crate) fn dep_manifest(
         let Some(art) = sess.get(&d.pkg) else {
             continue;
         };
-        let file = art.rmeta.clone().unwrap_or_else(|| art.path.clone());
+        let file = crate::invoke::meta_file(&art, early);
         let name = file
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -119,6 +148,12 @@ pub(crate) fn deps_match(out: &Path, manifest: &str) -> bool {
     }
 }
 
+pub(crate) struct UnitKey {
+    pub digest: String,
+    pub lineage: Option<String>,
+    pub metadata: String,
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "the digest must receive every independent rustc unit input"
@@ -133,117 +168,55 @@ pub(crate) fn unit_digest(
     takes_lto: bool,
     script: Option<&str>,
     target_tmpdir: bool,
-) -> Result<String> {
-    let mut key = Key::new();
-    key.feed_str(&sess.settings.rustc);
-    key.feed_str(&key::rustc_bin());
-    key.feed_str(&key::explicit_rustc_identity().unwrap_or_default());
-    for a in &sess.settings.codegen {
-        key.feed(a.as_bytes());
-    }
-    for w in sess.settings.wrapper_chain(pkg) {
-        key.feed(w.as_bytes());
-    }
-    let clippy = clippy(sess, pkg);
-    if let Some(lint) = &clippy {
-        key.feed_str(lint);
-    }
-    key.feed_str(kind);
-    let mut types = types.to_vec();
-    types.sort();
-    key.feed_list(&types);
-    if let Some(out) = script {
-        key.feed(out.as_bytes());
-    } else if pkg.script_target().is_some() {
-        key.feed(b"script-pending");
-    }
-    key.feed_list(&sess.settings.rustflags);
-    key.feed_list(settings::profile_for(&sess.settings.profile, takes_lto));
-    key.feed_list(
-        sess.settings
-            .overrides
-            .for_package(&pkg.name, pkg.source.is_some()),
-    );
-    key.feed_list(sess.settings.lints(pkg).iter());
-    key.feed_list(invoke::check_cfg_args(pkg));
-    key.feed(&[u8::from(sess.settings.mods.slim)]);
-    key.feed(&[u8::from(sess.settings.release)]);
-    key.feed_list(&sess.settings.linker);
-    key.feed_list(&sess.settings.threads);
-    let mut feats = features.to_vec();
-    feats.sort();
-    key.feed_list(&feats);
-    let dev_deps = kind.starts_with("test-") || kind.starts_with("example-");
-    if from_registry(pkg) {
-        key.feed_str(&pkg.id);
+) -> Result<UnitKey> {
+    let content = if from_registry(pkg) {
+        None
     } else {
-        let cache_key = pkg.id.clone();
-        let base = {
-            let cache = sess
-                .source_keys
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            cache.get(&cache_key).cloned()
-        };
-        let base = match base {
-            Some(b) => b,
-            None => {
-                let b = crate::out::timed(&format!("key {}", pkg.name), || {
-                    key::lib(
-                        pkg.root(),
-                        &sess.settings.rustc,
-                        &pkg.name,
-                        pkg.lib_target()
-                            .map(|t| t.edition.as_str())
-                            .unwrap_or("2021"),
-                        &[&sess.settings.home, &sess.settings.target_dir],
-                    )
-                })?;
-                sess.source_keys
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .insert(cache_key, b.clone());
-                b
-            }
-        };
-        key.feed_str(&base);
-        for name in sess.env_names(pkg, dev_deps).iter() {
-            key.feed_str(name);
-            let value = compile_env(sess, pkg, name, target_tmpdir);
-            key.feed(&[u8::from(value.is_some())]);
-            if let Some(value) = value {
-                key.feed(value.as_bytes());
-            }
-        }
-    }
-    let mut deps: Vec<_> = node
-        .deps
-        .iter()
-        .filter(|d| {
-            if dev_deps {
-                d.usable_for_lib() || d.usable_for_dev()
-            } else {
-                d.usable_for_lib() || d.usable_for_script()
-            }
-        })
-        .map(|d| d.pkg.as_str())
-        .collect();
-    deps.sort();
-    let mut dep_trace = Vec::new();
-    for d in deps {
-        let id = d.rsplit('#').next().unwrap_or(d);
-        key.feed_str(id);
-        let mut artifact = String::new();
-        if let Some(art) = sess.get(d)
-            && let Some(name) = art.path.file_name()
-        {
-            key.feed(name.as_encoded_bytes());
-            artifact = name.to_string_lossy().into_owned();
-        }
-        dep_trace.push(format!("dep: {id}=>{artifact}"));
-    }
+        Some(sess.source_key(pkg)?)
+    };
+    let mut key = Key::new();
+    let Fed {
+        types,
+        feats,
+        clippy,
+        dev_deps,
+        dep_trace,
+    } = feed_inputs(
+        &mut key,
+        sess,
+        pkg,
+        node,
+        kind,
+        features,
+        types,
+        takes_lto,
+        script,
+        target_tmpdir,
+        Feed::Unit {
+            content: content.as_deref(),
+        },
+    );
     let digest = key.digest();
+    let mut lineage_digest = None;
+    let mut metadata = digest.clone();
     if pkg.source.is_none() {
+        let mut lineage = Key::new();
+        feed_inputs(
+            &mut lineage,
+            sess,
+            pkg,
+            node,
+            kind,
+            features,
+            &types,
+            takes_lto,
+            script,
+            target_tmpdir,
+            Feed::Lineage,
+        );
+        metadata = lineage.digest();
+        lineage.feed(sess.settings.workspace_root.as_os_str().as_encoded_bytes());
+        lineage_digest = Some(lineage.digest());
         let source = if from_registry(pkg) {
             format!("registry:{}", pkg.id.rsplit('#').next().unwrap_or(&pkg.id))
         } else {
@@ -276,7 +249,7 @@ pub(crate) fn unit_digest(
             trace.push_str(&format!("clippy: {lint:?}\n"));
         }
         trace.push_str(&format!("rustflags: {:?}\n", sess.settings.rustflags));
-        trace.push_str(&format!("profile: {:?}\n", sess.settings.profile));
+        trace.push_str(&format!("profile: {:?}\n", sess.profile(pkg)));
         trace.push_str(&format!(
             "overrides: {:?}\n",
             sess.settings
@@ -306,11 +279,15 @@ pub(crate) fn unit_digest(
             ));
         }
         if std::env::var("ARTIFICER_DEBUG_KEY").is_ok_and(|w| w == pkg.name) {
-            eprintln!("KEY {} digest={digest}\n{trace}", pkg.name);
+            crate::out::diag(format!("KEY {} digest={digest}\n{trace}", pkg.name));
         }
         crate::keylog::record(&sess.settings.home, &pkg.name, &digest, &trace);
     }
-    Ok(digest)
+    Ok(UnitKey {
+        digest,
+        lineage: lineage_digest,
+        metadata,
+    })
 }
 
 #[cfg(test)]

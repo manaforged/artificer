@@ -90,6 +90,7 @@ pub enum Status {
     Finished,
     Running,
     Executable,
+    Timing,
 }
 
 impl Status {
@@ -100,6 +101,7 @@ impl Status {
             Self::Finished => "Finished",
             Self::Running => "Running",
             Self::Executable => "Executable",
+            Self::Timing => "Timing",
         }
     }
 }
@@ -169,19 +171,6 @@ pub fn attach(sink: Option<Sink>) {
     SINK.with(|s| *s.borrow_mut() = sink);
 }
 
-pub fn timed<T>(label: &str, f: impl FnOnce() -> T) -> T {
-    if std::env::var_os("ARTIFICER_TIMING").is_none() {
-        return f();
-    }
-    let start = std::time::Instant::now();
-    let r = f();
-    err(format!(
-        "artificer: time {label} {:.1}ms",
-        start.elapsed().as_secs_f64() * 1e3
-    ));
-    r
-}
-
 fn drain(m: &Mutex<Vec<u8>>) -> String {
     let bytes = m.lock().map(|b| b.clone()).unwrap_or_default();
     String::from_utf8_lossy(&bytes).into_owned()
@@ -203,8 +192,16 @@ pub fn out(s: impl Display) {
                 drop(writeln!(buf, "{s}"));
             }
         }
-        None => println!("{s}"),
+        None => write_out(&format!("{s}\n")),
     }
+}
+
+pub fn write_out(text: &str) {
+    drop(std::io::stdout().write_all(text.as_bytes()));
+}
+
+pub fn write_err(text: &str) {
+    drop(std::io::stderr().write_all(text.as_bytes()));
 }
 
 pub fn err(s: impl Display) {
@@ -221,7 +218,7 @@ pub fn diag(s: impl Display) {
                 drop(writeln!(buf, "{s}"));
             }
         }
-        None => eprintln!("{s}"),
+        None => write_err(&format!("{s}\n")),
     }
 }
 

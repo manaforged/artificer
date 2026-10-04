@@ -83,6 +83,42 @@ fn published_scratch_is_dropped() {
     assert!(unit.join("ok").is_file(), "units stay");
 }
 
+#[cfg(unix)]
+#[test]
+fn orphaned_scratch_is_dropped_once_stale() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    assert!(artificer::ready(&home));
+    fs::create_dir_all(home.join("units").join(artificer::LAYOUT)).unwrap();
+    let stale = home.join("scratch/u-stale");
+    let fresh = home.join("scratch/u-fresh");
+    for dir in [&stale, &fresh] {
+        fs::create_dir_all(dir).unwrap();
+        fs::write(dir.join("libx.rlib"), b"partial").unwrap();
+    }
+    fs::File::open(&stale)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 3600))
+        .unwrap();
+    let root = tmp.path().join("ws");
+    write_lib(&root, "widget");
+
+    let result = std::process::Command::new(env!("CARGO_BIN_EXE_artificer"))
+        .arg("clean")
+        .current_dir(&root)
+        .env("ARTIFICER_HOME", &home)
+        .env("CARGO_TARGET_DIR", root.join("target"))
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(!stale.exists(), "a stale scratch dir with no unit goes");
+    assert!(fresh.is_dir(), "a recent scratch dir stays");
+}
+
 #[test]
 fn store_stat_counts_units() {
     let tmp = tempfile::tempdir().unwrap();

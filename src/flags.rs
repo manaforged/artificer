@@ -98,12 +98,39 @@ fn probe_threads(dir: &Path) -> Vec<String> {
     Vec::new()
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct ForkFlags {
+    pub trusted: Vec<String>,
+    pub early: Vec<String>,
+}
+
+pub fn fork_flags(home: &Path, rustc: &str, dir: &Path, mods: &crate::mods::Mods) -> ForkFlags {
+    let probe = |on: bool, kind: &str, flag: &str| {
+        if !on {
+            return Vec::new();
+        }
+        stamped(home, kind, rustc, || {
+            let args = vec!["-Z".into(), flag.into()];
+            if rustc_lib(&args, dir) {
+                return args;
+            }
+            Vec::new()
+        })
+    };
+    ForkFlags {
+        trusted: probe(mods.trust, "trusted", "trusted-crate"),
+        early: probe(mods.early, "early", "early-metadata"),
+    }
+}
+
 fn threads_n(cores: usize) -> usize {
-    (cores / 4).clamp(1, 4)
+    cores.clamp(1, 8)
 }
 
 fn rustc_lib(extra: &[String], toolchain_dir: &Path) -> bool {
-    let dir = scratch("lib");
+    let Some(dir) = scratch("lib") else {
+        return false;
+    };
     let src = dir.join("lib.rs");
     if std::fs::write(&src, "pub fn _n() {}\n").is_err() {
         return false;
@@ -123,7 +150,9 @@ fn rustc_lib(extra: &[String], toolchain_dir: &Path) -> bool {
 }
 
 fn rustc_bin(extra: &[String], toolchain_dir: &Path) -> bool {
-    let dir = scratch("bin");
+    let Some(dir) = scratch("bin") else {
+        return false;
+    };
     let src = dir.join("main.rs");
     if std::fs::write(&src, "fn main() {}\n").is_err() {
         return false;
@@ -149,8 +178,12 @@ fn rustc_bin(extra: &[String], toolchain_dir: &Path) -> bool {
     ok
 }
 
-fn scratch(tag: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("artificer-{tag}-{}", std::process::id()))
+fn scratch(tag: &str) -> Option<std::path::PathBuf> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("artificer-{tag}-{}-{n}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
 }
 
 #[cfg(test)]

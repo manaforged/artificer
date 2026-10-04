@@ -11,17 +11,13 @@ fn extra(id: &str) -> Unit {
     Unit::Extra(id.to_string())
 }
 
-fn state<T>(ids: &[Unit], deps: &HashMap<Unit, Vec<Unit>>) -> State<T> {
-    State {
-        want: ids.iter().cloned().collect(),
-        remaining: ids.iter().cloned().collect(),
-        done: HashSet::new(),
-        in_flight: 0,
-        out: Vec::new(),
-        failed: Vec::new(),
-        reported: false,
-        score: scores(ids, deps),
-    }
+fn ready(units: &[Unit], deps: &HashMap<Unit, Vec<Unit>>, links: &[Unit]) -> Ready {
+    Ready::new(&Plan {
+        units: units.to_vec(),
+        deps: deps.clone(),
+        links: links.iter().cloned().collect(),
+        early_ok: HashSet::new(),
+    })
 }
 
 #[test]
@@ -38,15 +34,15 @@ fn configured_job_cap_has_a_floor() {
 
 #[test]
 fn pick_waits_for_in_scope_deps_only() {
-    let mut state: State<()> = state(&[pkg("a"), pkg("b")], &HashMap::new());
     let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
     deps.insert(pkg("a"), vec![pkg("b")]);
     deps.insert(pkg("b"), vec![pkg("outside")]);
-    assert_eq!(state.pick(&deps), Some(pkg("b")));
-    assert!(state.pick(&deps).is_none());
+    let mut state = ready(&[pkg("a"), pkg("b")], &deps, &[]);
+    assert_eq!(state.pick(), Some(pkg("b")));
+    assert!(state.pick().is_none());
     state.done.insert(pkg("b"));
     state.in_flight = 0;
-    assert_eq!(state.pick(&deps), Some(pkg("a")));
+    assert_eq!(state.pick(), Some(pkg("a")));
 }
 
 #[test]
@@ -55,12 +51,12 @@ fn spine_beats_leaves() {
     let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
     deps.insert(pkg("a"), vec![pkg("b")]);
     deps.insert(pkg("b"), vec![pkg("c")]);
-    let score = scores(&ids, &deps);
+    let score = plan::scores(&ids, &deps);
     assert_eq!(score[&pkg("c")], 2);
     assert_eq!(score[&pkg("b")], 1);
     assert_eq!(score[&pkg("l1")], 0);
-    let mut state: State<()> = state(&ids, &deps);
-    assert_eq!(state.pick(&deps), Some(pkg("c")), "spine first");
+    let mut state = ready(&ids, &deps, &[]);
+    assert_eq!(state.pick(), Some(pkg("c")), "spine first");
 }
 
 #[test]
@@ -69,12 +65,128 @@ fn extras_wait_for_their_package_and_deps() {
     let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
     deps.insert(pkg("root"), vec![pkg("dep")]);
     deps.insert(extra("root"), vec![pkg("dep"), pkg("root")]);
-    let mut state: State<()> = state(&ids, &deps);
-    assert_eq!(state.pick(&deps), Some(pkg("dep")), "dep first");
+    let mut state = ready(&ids, &deps, &[extra("root")]);
+    assert_eq!(state.pick(), Some(pkg("dep")), "dep first");
     state.done.insert(pkg("dep"));
     state.in_flight = 0;
-    assert_eq!(state.pick(&deps), Some(pkg("root")), "then the lib");
+    assert_eq!(state.pick(), Some(pkg("root")), "then the lib");
     state.done.insert(pkg("root"));
     state.in_flight = 0;
-    assert_eq!(state.pick(&deps), Some(extra("root")), "harness last");
+    assert_eq!(state.pick(), Some(extra("root")), "harness last");
+}
+
+#[test]
+fn a_library_starts_once_its_dependency_has_metadata() {
+    let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
+    deps.insert(pkg("user"), vec![pkg("base")]);
+    let mut state = ready(&[pkg("base"), pkg("user")], &deps, &[]);
+    assert_eq!(state.pick(), Some(pkg("base")));
+    assert!(state.pick().is_none(), "no metadata yet");
+    state.meta.insert(pkg("base"));
+    assert_eq!(
+        state.pick(),
+        Some(pkg("user")),
+        "started before base finished"
+    );
+}
+
+#[test]
+fn a_linking_unit_waits_for_every_transitive_dependency() {
+    let ids = vec![pkg("a"), pkg("b"), pkg("bin")];
+    let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
+    deps.insert(pkg("b"), vec![pkg("a")]);
+    deps.insert(pkg("bin"), vec![pkg("b")]);
+    let mut state = ready(&ids, &deps, &[pkg("bin")]);
+    state.remaining.remove(&pkg("a"));
+    state.remaining.remove(&pkg("b"));
+    state.meta.insert(pkg("a"));
+    state.done.insert(pkg("b"));
+    assert!(state.pick().is_none(), "a has only metadata");
+    state.done.insert(pkg("a"));
+    assert_eq!(state.pick(), Some(pkg("bin")));
+}
+
+fn script(id: &str) -> Unit {
+    Unit::Script(id.to_string())
+}
+
+#[test]
+fn a_build_script_starts_while_the_package_dependencies_compile() {
+    let ids = vec![pkg("slow"), pkg("tool"), script("p"), pkg("p")];
+    let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
+    deps.insert(script("p"), vec![pkg("tool")]);
+    deps.insert(pkg("p"), vec![pkg("slow"), script("p")]);
+    let mut state = ready(&ids, &deps, &[script("p")]);
+    let first = [state.pick(), state.pick()];
+    assert!(first.contains(&Some(pkg("slow"))) && first.contains(&Some(pkg("tool"))));
+    assert!(
+        state.pick().is_none(),
+        "the script needs its build dependency"
+    );
+    state.done.insert(pkg("tool"));
+    assert_eq!(state.pick(), Some(script("p")), "slow is still compiling");
+    assert!(state.pick().is_none(), "the package needs its script");
+    state.done.insert(script("p"));
+    state.meta.insert(pkg("slow"));
+    assert_eq!(state.pick(), Some(pkg("p")));
+}
+
+#[test]
+fn a_panicking_unit_ends_the_build_instead_of_hanging() {
+    let _guard = ENV.lock().expect("environment test lock");
+    unsafe {
+        std::env::set_var("ARTIFICER_JOBS", "2");
+    }
+    let (sent, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let meta: crate::cargo::Metadata =
+            serde_json::from_str(r#"{"packages": []}"#).expect("empty metadata");
+        let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
+        deps.insert(pkg("after"), vec![pkg("broken")]);
+        let plan = Plan {
+            units: vec![pkg("broken"), pkg("after")],
+            deps,
+            links: HashSet::new(),
+            early_ok: HashSet::new(),
+        };
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_units(&meta, plan, |unit| {
+                if *unit == pkg("broken") {
+                    panic!("unit work failed");
+                }
+                Ok(())
+            })
+        }));
+        sent.send(outcome.is_err())
+            .expect("the test waits for the outcome");
+    });
+    let panicked = received.recv_timeout(std::time::Duration::from_secs(30));
+    unsafe {
+        std::env::remove_var("ARTIFICER_JOBS");
+    }
+    assert_eq!(panicked, Ok(true));
+}
+
+#[test]
+fn only_check_only_units_start_on_early_metadata() {
+    let ids = vec![pkg("dep"), pkg("checked"), pkg("generates")];
+    let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
+    deps.insert(pkg("checked"), vec![pkg("dep")]);
+    deps.insert(pkg("generates"), vec![pkg("dep")]);
+    let mut state = Ready::new(&Plan {
+        units: ids,
+        deps,
+        links: HashSet::new(),
+        early_ok: [pkg("checked")].into_iter().collect(),
+    });
+    assert_eq!(state.pick(), Some(pkg("dep")));
+    assert!(state.pick().is_none());
+    state.early.insert(pkg("dep"));
+    assert_eq!(state.pick(), Some(pkg("checked")));
+    assert!(
+        state.pick().is_none(),
+        "a unit that generates code needs full metadata"
+    );
+    state.meta.insert(pkg("dep"));
+    assert_eq!(state.pick(), Some(pkg("generates")));
 }

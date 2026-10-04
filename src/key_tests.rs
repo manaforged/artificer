@@ -8,19 +8,19 @@ fn asset_changes_key() -> Result<()> {
     fs::write(pkg.join("Cargo.toml"), "[package]\nname = \"w\"\n")?;
     fs::write(pkg.join("src/lib.rs"), "pub fn n() {}\n")?;
     fs::write(pkg.join("data.json"), "{}\n")?;
-    let a = lib(pkg, "rustc 1", "w", "2021", &[])?;
+    let a = lib(None, pkg, "rustc 1", "w", "2021", &[])?;
     fs::write(pkg.join("data.json"), "{ \"x\": 1 }\n")?;
-    let b = lib(pkg, "rustc 1", "w", "2021", &[])?;
+    let b = lib(None, pkg, "rustc 1", "w", "2021", &[])?;
     assert_ne!(a, b);
     fs::write(pkg.join("NOTES.md"), "noise")?;
-    let c = lib(pkg, "rustc 1", "w", "2021", &[])?;
+    let c = lib(None, pkg, "rustc 1", "w", "2021", &[])?;
     assert_ne!(b, c);
     fs::create_dir_all(pkg.join("node_modules/x"))?;
     fs::write(pkg.join("node_modules/x/index.js"), "1")?;
-    let d = lib(pkg, "rustc 1", "w", "2021", &[])?;
+    let d = lib(None, pkg, "rustc 1", "w", "2021", &[])?;
     assert_eq!(c, d);
     fs::write(pkg.join("src/lib.rs"), "pub fn n() { let _ = 1; }\n")?;
-    let e = lib(pkg, "rustc 1", "w", "2021", &[])?;
+    let e = lib(None, pkg, "rustc 1", "w", "2021", &[])?;
     assert_ne!(d, e);
     Ok(())
 }
@@ -37,9 +37,9 @@ fn symlinked_file_changes_key() -> Result<()> {
     fs::write(pkg.join("Cargo.toml"), "[package]\nname = \"w\"\n")?;
     fs::write(&source, "pub fn value() -> u8 { 1 }\n")?;
     symlink(&source, pkg.join("src/lib.rs"))?;
-    let a = lib(&pkg, "rustc 1", "w", "2021", &[])?;
+    let a = lib(None, &pkg, "rustc 1", "w", "2021", &[])?;
     fs::write(&source, "pub fn value() -> u8 { 2 }\n")?;
-    let b = lib(&pkg, "rustc 1", "w", "2021", &[])?;
+    let b = lib(None, &pkg, "rustc 1", "w", "2021", &[])?;
     assert_ne!(a, b);
     Ok(())
 }
@@ -58,9 +58,9 @@ fn symlinked_directory_changes_key() -> Result<()> {
     fs::write(pkg.join("src/lib.rs"), "pub fn value() -> u8 { 1 }\n")?;
     fs::write(generated.join("data.bin"), b"one")?;
     symlink(&generated, pkg.join("generated"))?;
-    let a = lib(&pkg, "rustc 1", "w", "2021", &[])?;
+    let a = lib(None, &pkg, "rustc 1", "w", "2021", &[])?;
     fs::write(generated.join("data.bin"), b"two")?;
-    let b = lib(&pkg, "rustc 1", "w", "2021", &[])?;
+    let b = lib(None, &pkg, "rustc 1", "w", "2021", &[])?;
     assert_ne!(a, b);
     Ok(())
 }
@@ -77,7 +77,7 @@ fn symlink_cycle_fails_closed() -> Result<()> {
     fs::write(pkg.join("src/lib.rs"), "pub fn value() -> u8 { 1 }\n")?;
     symlink(pkg, pkg.join("src/cycle"))?;
     let error =
-        lib(pkg, "rustc 1", "w", "2021", &[]).expect_err("a recursive source tree must fail");
+        lib(None, pkg, "rustc 1", "w", "2021", &[]).expect_err("a recursive source tree must fail");
     assert!(error.to_string().contains("symlink cycle"));
     Ok(())
 }
@@ -114,13 +114,13 @@ fn ordinary_directories_are_content_keyed() -> Result<()> {
     fs::create_dir_all(pkg.join("dist"))?;
     fs::write(pkg.join("Cargo.toml"), "[package]\nname = \"w\"\n")?;
     fs::write(pkg.join("dist/gen.rs"), "pub fn g() {}\n")?;
-    let a = lib(pkg, "rustc 1", "w", "2021", &[])?;
+    let a = lib(None, pkg, "rustc 1", "w", "2021", &[])?;
     fs::write(pkg.join("dist/gen.rs"), "pub fn g() { 1; }\n")?;
-    let b = lib(pkg, "rustc 1", "w", "2021", &[])?;
+    let b = lib(None, pkg, "rustc 1", "w", "2021", &[])?;
     assert_ne!(a, b);
     fs::create_dir_all(pkg.join("off"))?;
     fs::write(pkg.join("off/scratch.rs"), "pub fn s() {}\n")?;
-    let c = lib(pkg, "rustc 1", "w", "2021", &[])?;
+    let c = lib(None, pkg, "rustc 1", "w", "2021", &[])?;
     assert_ne!(b, c);
     Ok(())
 }

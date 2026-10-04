@@ -57,9 +57,9 @@ file with any number you quote.
 
 Stock Cargo runs with its defaults, including incremental compilation. The
 test cases include one scheduling difference: Artificer runs test binaries
-at the same time, and Cargo runs them one at a time. Artificer does not use
-incremental compilation, so a small edit in one checkout can be faster
-with Cargo.
+at the same time, and Cargo runs them one at a time. Artificer compiles
+path packages incrementally where Cargo does, in the same
+`target/<profile>/incremental` directory.
 
 ## Results for 0.1.0
 

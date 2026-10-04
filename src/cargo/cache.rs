@@ -34,19 +34,23 @@ pub(super) fn reroot(meta: &mut Metadata, manifest: &Path) -> bool {
     if old.as_os_str().is_empty() {
         return false;
     }
-    let root_manifest = manifest
-        .parent()
-        .is_some_and(|d| d.join("Cargo.toml") == manifest && old.join("Cargo.toml") != *manifest)
-        && meta
-            .packages
-            .iter()
-            .all(|p| p.source.is_some() || p.manifest_path != *manifest);
-    let new = meta
-        .packages
+    let Some(new) = new_root(meta, manifest, &old) else {
+        return false;
+    };
+    if new != old && !move_root(meta, &old, &new) {
+        return false;
+    }
+    local_only(meta, &new)
+        && (new.join("Cargo.toml") == manifest
+            || meta.packages.iter().any(|p| p.manifest_path == manifest))
+}
+
+fn new_root(meta: &Metadata, manifest: &Path, old: &Path) -> Option<PathBuf> {
+    meta.packages
         .iter()
         .filter(|p| p.source.is_none())
         .find_map(|p| {
-            let rel = p.manifest_path.strip_prefix(&old).ok()?;
+            let rel = p.manifest_path.strip_prefix(old).ok()?;
             if !manifest.ends_with(rel) {
                 return None;
             }
@@ -57,63 +61,79 @@ pub(super) fn reroot(meta: &mut Metadata, manifest: &Path) -> bool {
             Some(root)
         })
         .or_else(|| {
-            if *manifest == old.join("Cargo.toml") || root_manifest {
-                manifest.parent().map(Path::to_path_buf)
-            } else {
-                None
-            }
-        });
-    let Some(new) = new else {
-        return false;
+            (*manifest == old.join("Cargo.toml") || root_manifest(meta, manifest, old))
+                .then(|| manifest.parent().map(Path::to_path_buf))
+                .flatten()
+        })
+}
+
+fn root_manifest(meta: &Metadata, manifest: &Path, old: &Path) -> bool {
+    manifest
+        .parent()
+        .is_some_and(|d| d.join("Cargo.toml") == manifest && old.join("Cargo.toml") != *manifest)
+        && meta
+            .packages
+            .iter()
+            .all(|p| p.source.is_some() || p.manifest_path != *manifest)
+}
+
+fn move_root(meta: &mut Metadata, old: &Path, new: &Path) -> bool {
+    move_paths(meta, old, new);
+    let to = format!("path+file://{}", file_url(new));
+    move_ids(meta, &format!("path+file://{}", file_url(old)), &to);
+    meta.workspace_root = new.to_path_buf();
+    meta.pkg_ix = OnceLock::new();
+    meta.node_ix = OnceLock::new();
+    let stale = |id: &String| id.starts_with("path+file://") && !id.starts_with(&to);
+    !(meta.packages.iter().any(|p| stale(&p.id))
+        || meta.workspace_members.iter().any(stale)
+        || meta.workspace_default_members.iter().flatten().any(stale))
+}
+
+fn move_paths(meta: &mut Metadata, old: &Path, new: &Path) {
+    let swap = |p: &mut PathBuf| {
+        if let Ok(rel) = p.strip_prefix(old) {
+            *p = new.join(rel);
+        }
     };
-    if new != old {
-        let swap = |p: &mut PathBuf| {
-            if let Ok(rel) = p.strip_prefix(&old) {
-                *p = new.join(rel);
-            }
-        };
-        let from = format!("path+file://{}", file_url(&old));
-        let to = format!("path+file://{}", file_url(&new));
-        let move_id = |id: &mut String| {
-            if let Some(rest) = id.strip_prefix(&from)
-                && (rest.starts_with('/') || rest.starts_with('#'))
-            {
-                *id = format!("{to}{rest}");
-            }
-        };
-        for pkg in &mut meta.packages {
-            swap(&mut pkg.manifest_path);
-            if let Some(file) = &mut pkg.license_file {
-                swap(file);
-            }
-            for t in &mut pkg.targets {
-                swap(&mut t.src_path);
-            }
-            move_id(&mut pkg.id);
+    for pkg in &mut meta.packages {
+        swap(&mut pkg.manifest_path);
+        if let Some(file) = &mut pkg.license_file {
+            swap(file);
         }
-        meta.workspace_members.iter_mut().for_each(move_id);
-        if let Some(resolve) = &mut meta.resolve {
-            if let Some(root) = &mut resolve.root {
-                move_id(root);
-            }
-            for node in &mut resolve.nodes {
-                move_id(&mut node.id);
-                for dep in &mut node.deps {
-                    move_id(&mut dep.pkg);
-                }
-            }
-        }
-        meta.workspace_root = new.clone();
-        meta.pkg_ix = OnceLock::new();
-        meta.node_ix = OnceLock::new();
-        let stale = |id: &String| id.starts_with("path+file://") && !id.starts_with(&to);
-        if meta.packages.iter().any(|p| stale(&p.id)) || meta.workspace_members.iter().any(stale) {
-            return false;
+        for t in &mut pkg.targets {
+            swap(&mut t.src_path);
         }
     }
-    local_only(meta, &new)
-        && (new.join("Cargo.toml") == manifest
-            || meta.packages.iter().any(|p| p.manifest_path == manifest))
+}
+
+fn move_ids(meta: &mut Metadata, from: &str, to: &str) {
+    let move_id = |id: &mut String| {
+        if let Some(rest) = id.strip_prefix(from)
+            && (rest.starts_with('/') || rest.starts_with('#'))
+        {
+            *id = format!("{to}{rest}");
+        }
+    };
+    for pkg in &mut meta.packages {
+        move_id(&mut pkg.id);
+    }
+    meta.workspace_members.iter_mut().for_each(move_id);
+    meta.workspace_default_members
+        .iter_mut()
+        .flatten()
+        .for_each(move_id);
+    if let Some(resolve) = &mut meta.resolve {
+        if let Some(root) = &mut resolve.root {
+            move_id(root);
+        }
+        for node in &mut resolve.nodes {
+            move_id(&mut node.id);
+            for dep in &mut node.deps {
+                move_id(&mut dep.pkg);
+            }
+        }
+    }
 }
 
 fn file_url(path: &Path) -> String {

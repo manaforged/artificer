@@ -1,4 +1,5 @@
 use super::*;
+use crate::settings::Settings;
 
 fn directive<'a>(line: &'a str, name: &str) -> Option<&'a str> {
     line.strip_prefix("cargo::")
@@ -37,23 +38,19 @@ pub fn metadata(output: &str) -> Vec<(String, String)> {
 
 pub(super) fn input_stamp(
     pkg: &Package,
+    settings: &Settings,
     output: &str,
     out_dir: &Path,
-    workspace_root: &Path,
 ) -> String {
+    let home = settings.home.as_path();
     let mut key = Key::new();
-    let roots = [pkg.root(), workspace_root];
+    let roots = [pkg.root(), settings.workspace_root.as_path()];
     let spellings: Vec<Vec<String>> = roots
         .iter()
         .map(|root| {
-            let plain = root.display().to_string();
-            let shown = crate::platform::env_path(root).display().to_string();
-            [plain, shown]
+            crate::inputs::spellings(root)
                 .into_iter()
-                .flat_map(|text| {
-                    let escaped = text.replace('\\', "\\\\");
-                    [text, escaped]
-                })
+                .map(|(_, text)| text)
                 .collect()
         })
         .collect();
@@ -80,17 +77,21 @@ pub(super) fn input_stamp(
     }
     for (root, hit) in roots.iter().zip(found) {
         if hit {
-            key.feed_str(&root.display().to_string());
+            key.feed_str(&crate::inputs::portable(home, &root.display().to_string()));
         }
     }
     for line in output.lines() {
         if let Some(path) = directive(line, "rerun-if-changed=") {
             key.feed_str(path);
-            watch(&mut key, &pkg.root().join(path));
+            watch(
+                &mut key,
+                home,
+                &pkg.root().join(crate::inputs::concrete(home, path)),
+            );
         }
         if let Some(name) = directive(line, "rerun-if-env-changed=") {
             key.feed_str(name);
-            let value = std::env::var_os(name);
+            let value = settings.env_value(name);
             key.feed(&[u8::from(value.is_some())]);
             if let Some(value) = value {
                 key.feed(value.as_encoded_bytes());
@@ -98,6 +99,16 @@ pub(super) fn input_stamp(
         }
     }
     key.full_digest()
+}
+
+const BUILD_PRODUCTS: [&str; 10] = [
+    "o", "obj", "a", "lib", "d", "rlib", "rmeta", "so", "dylib", "dll",
+];
+
+fn build_product(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| BUILD_PRODUCTS.contains(&ext))
 }
 
 fn mentions(dir: &Path, needles: &[(usize, memchr::memmem::Finder<'_>)], hits: &mut [bool]) {
@@ -111,7 +122,7 @@ fn mentions(dir: &Path, needles: &[(usize, memchr::memmem::Finder<'_>)], hits: &
         let path = entry.path();
         match entry.file_type() {
             Ok(kind) if kind.is_dir() => mentions(&path, needles, hits),
-            Ok(kind) if kind.is_file() => {
+            Ok(kind) if kind.is_file() && !build_product(&path) => {
                 if let Ok(bytes) = fs::read(&path) {
                     for ((_, finder), hit) in needles.iter().zip(hits.iter_mut()) {
                         *hit = *hit || finder.find(&bytes).is_some();
@@ -123,7 +134,7 @@ fn mentions(dir: &Path, needles: &[(usize, memchr::memmem::Finder<'_>)], hits: &
     }
 }
 
-pub(super) fn watch(key: &mut Key, path: &Path) {
+pub(super) fn watch(key: &mut Key, home: &Path, path: &Path) {
     match fs::metadata(path) {
         Err(_) => {
             key.feed(b"absent");
@@ -139,12 +150,15 @@ pub(super) fn watch(key: &mut Key, path: &Path) {
                 if let Some(name) = kid.file_name() {
                     key.feed(name.as_encoded_bytes());
                 }
-                watch(key, &kid);
+                watch(key, home, &kid);
             }
         }
         Ok(_) => {
             key.feed(b"file");
-            key.feed(&fs::read(path).unwrap_or_default());
+            key.feed(&crate::inputs::portable_bytes(
+                home,
+                &fs::read(path).unwrap_or_default(),
+            ));
         }
     }
 }

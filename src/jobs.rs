@@ -8,6 +8,32 @@ use std::path::Path;
 #[cfg(unix)]
 use std::path::PathBuf;
 
+#[cfg(unix)]
+mod build;
+#[cfg(unix)]
+mod held;
+
+#[cfg(unix)]
+pub use build::BuildPool;
+
+#[cfg(not(unix))]
+pub struct BuildPool;
+
+#[cfg(not(unix))]
+impl BuildPool {
+    pub(crate) fn new(_home: &Path, _tokens: usize) -> Result<Option<Self>> {
+        Ok(None)
+    }
+
+    pub(crate) fn take(&self) -> Result<()> {
+        Ok(())
+    }
+
+    pub(crate) fn configure(&self, cmd: &mut std::process::Command) {
+        isolate(cmd);
+    }
+}
+
 pub fn install(home: &Path) -> Result<()> {
     fs::create_dir_all(home)?;
     let tag = home.join("CACHEDIR.TAG");
@@ -35,13 +61,7 @@ fn install_pool(home: &Path) -> Result<()> {
         .unwrap_or(4)
         .max(1);
     if !fifo.exists() {
-        let status = std::process::Command::new("mkfifo")
-            .arg(&fifo)
-            .status()
-            .context("mkfifo")?;
-        if !status.success() && !fifo.exists() {
-            anyhow::bail!("mkfifo {}", fifo.display());
-        }
+        make_fifo(&fifo)?;
     }
     if parked(&fifo) {
         return write_env(home, &fifo);
@@ -72,8 +92,13 @@ fn install_pool(home: &Path) -> Result<()> {
 }
 
 #[cfg(unix)]
+fn auth(fifo: &Path) -> String {
+    format!("--jobserver-auth=fifo:{}", fifo.display())
+}
+
+#[cfg(unix)]
 fn write_env(home: &Path, fifo: &Path) -> Result<()> {
-    let auth = format!("--jobserver-auth=fifo:{}", fifo.display());
+    let auth = auth(fifo);
     fs::write(
         home.join("jobserver.env"),
         format!("export MAKEFLAGS='{auth}'\nexport CARGO_MAKEFLAGS='{auth}'\n"),
@@ -153,6 +178,20 @@ pub(crate) fn fill(fifo: &Path, n: usize) -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+fn make_fifo(path: &Path) -> Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let name = std::ffi::CString::new(path.as_os_str().as_bytes())
+        .with_context(|| format!("fifo path {}", path.display()))?;
+    // SAFETY: `name` is a valid NUL-terminated path that outlives the call.
+    let made = unsafe { libc::mkfifo(name.as_ptr(), 0o600) } == 0;
+    if !made && !path.exists() {
+        return Err(io::Error::last_os_error())
+            .with_context(|| format!("mkfifo {}", path.display()));
+    }
+    Ok(())
+}
+
 pub fn isolate(cmd: &mut std::process::Command) {
     cmd.env_remove("MAKEFLAGS");
     cmd.env_remove("CARGO_MAKEFLAGS");
@@ -160,36 +199,24 @@ pub fn isolate(cmd: &mut std::process::Command) {
 
 pub struct Permit {
     #[cfg(unix)]
-    file: Option<fs::File>,
+    _token: Option<held::Token>,
 }
 
 pub fn acquire(home: &Path) -> Result<Permit> {
     #[cfg(unix)]
     {
-        use std::io::Read;
         let path = fifo(home);
         if !path.exists() {
-            return Ok(Permit { file: None });
+            return Ok(Permit { _token: None });
         }
-        let mut file = fs::OpenOptions::new().read(true).write(true).open(&path)?;
-        let mut byte = [0u8; 1];
-        file.read_exact(&mut byte).context("jobserver token")?;
-        Ok(Permit { file: Some(file) })
+        Ok(Permit {
+            _token: Some(held::take(&path)?),
+        })
     }
     #[cfg(not(unix))]
     {
         let _ = home;
         Ok(Permit {})
-    }
-}
-
-impl Drop for Permit {
-    fn drop(&mut self) {
-        #[cfg(unix)]
-        if let Some(file) = &mut self.file {
-            use std::io::Write;
-            drop(file.write_all(b"+"));
-        }
     }
 }
 

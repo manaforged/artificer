@@ -5,25 +5,35 @@
 | [`CheckOpts`](#checkopts) | struct |  |
 | [`InstallReport`](#installreport) | struct |  |
 | [`Mods`](#mods) | struct |  |
+| [`ProfileRecording`](#profilerecording) | struct |  |
 | [`Report`](#report) | struct |  |
 | [`Reported`](#reported) | struct |  |
 | [`ServeRequest`](#serverequest) | struct |  |
 | [`StoreStat`](#storestat) | struct |  |
 | [`SweepReport`](#sweepreport) | struct |  |
+| [`TargetSel`](#targetsel) | struct |  |
 | [`Targets`](#targets) | struct |  |
 | [`TestOpts`](#testopts) | struct |  |
 | [`TransferReport`](#transferreport) | struct |  |
 | [`Unmodeled`](#unmodeled) | struct |  |
 | [`ColorChoice`](#colorchoice) | enum |  |
+| [`Location`](#location) | enum |  |
+| [`Phase`](#phase) | enum |  |
+| [`Pick`](#pick) | enum |  |
+| [`ProfileCommand`](#profilecommand) | enum |  |
+| [`RemoteSource`](#remotesource) | enum |  |
+| [`RunPhase`](#runphase) | enum |  |
 | [`RustcOutcome`](#rustcoutcome) | enum |  |
 | [`ScriptOutcome`](#scriptoutcome) | enum |  |
 | [`add_to_profiles`](#add_to_profiles) | fn |  |
+| [`begin_profile`](#begin_profile) | fn |  |
 | [`cargo_home`](#cargo_home) | fn |  |
 | [`cargo_package`](#cargo_package) | fn |  |
 | [`check`](#check) | fn |  |
 | [`check_cmd`](#check_cmd) | fn |  |
 | [`check_package`](#check_package) | fn |  |
 | [`check_real_cargo`](#check_real_cargo) | fn |  |
+| [`check_selected`](#check_selected) | fn |  |
 | [`control_home`](#control_home) | fn |  |
 | [`default_home`](#default_home) | fn |  |
 | [`doctor`](#doctor) | fn |  |
@@ -40,13 +50,20 @@
 | [`passthrough_reason`](#passthrough_reason) | fn |  |
 | [`path_prepend`](#path_prepend) | fn |  |
 | [`path_remove`](#path_remove) | fn |  |
+| [`profile_command`](#profile_command) | fn |  |
 | [`profile_line`](#profile_line) | fn |  |
+| [`profile_span`](#profile_span) | fn |  |
 | [`profiles`](#profiles) | fn |  |
+| [`pull`](#pull) | fn |  |
 | [`purge`](#purge) | fn |  |
+| [`push`](#push) | fn |  |
+| [`raise_open_file_limit`](#raise_open_file_limit) | fn |  |
 | [`ready`](#ready) | fn |  |
 | [`refresh_shim`](#refresh_shim) | fn |  |
+| [`remote`](#remote) | fn |  |
 | [`remove_from_profiles`](#remove_from_profiles) | fn |  |
 | [`report_error`](#report_error) | fn |  |
+| [`request_timings`](#request_timings) | fn |  |
 | [`run_cmd`](#run_cmd) | fn |  |
 | [`save_mods`](#save_mods) | fn |  |
 | [`serve_listen`](#serve_listen) | fn |  |
@@ -56,7 +73,9 @@
 | [`set_color`](#set_color) | fn |  |
 | [`set_jobs`](#set_jobs) | fn |  |
 | [`set_quiet`](#set_quiet) | fn |  |
+| [`set_remote`](#set_remote) | fn |  |
 | [`set_trace`](#set_trace) | fn |  |
+| [`spawn_pull`](#spawn_pull) | fn |  |
 | [`stock_cargo`](#stock_cargo) | fn |  |
 | [`store_stat`](#store_stat) | fn |  |
 | [`sweep_dir`](#sweep_dir) | fn |  |
@@ -65,6 +84,8 @@
 | [`uninstall`](#uninstall) | fn |  |
 | [`why_miss`](#why_miss) | fn |  |
 | [`LAYOUT`](#layout) | const |  |
+| [`PULL_EVERY`](#pull_every) | const |  |
+| [`REMOTE_ENV`](#remote_env) | const |  |
 
 ## Structs
 
@@ -81,6 +102,7 @@
 | <code>meta_flags: Vec&lt;String&gt;</code> |  |
 | <code>no_default: bool</code> |  |
 | <code>release: bool</code> |  |
+| <code>target_dir: Option&lt;PathBuf&gt;</code> |  |
 | <code>targets: <a href="#targets">Targets</a></code> |  |
 | <code>workspace: bool</code> |  |
 
@@ -114,6 +136,7 @@
 | Field | Description |
 | --- | --- |
 | <code>cranelift: bool</code> |  |
+| <code>early: bool</code> |  |
 | <code>enabled: bool</code> |  |
 | <code>linker: bool</code> |  |
 | <code>meta_cache: bool</code> |  |
@@ -122,8 +145,18 @@
 | <code>slim: bool</code> |  |
 | <code>sweep: bool</code> |  |
 | <code>threads: bool</code> |  |
+| <code>trust: bool</code> |  |
 
 **Trait implementations:** <code>Clone</code>, <code>Default</code>, <code>Debug</code>, <code>Serialize</code>, <code>Deserialize&lt;'de&gt;</code>
+
+
+### `ProfileRecording`
+
+**Methods**
+
+| Method | Description |
+| --- | --- |
+| <code>finish(self, home: &amp;Path, failed: bool)</code> |  |
 
 
 ### `Report`
@@ -165,7 +198,9 @@
 | <code>only: Vec&lt;String&gt;</code> |  |
 | <code>op: String</code> |  |
 | <code>packages: Vec&lt;String&gt;</code> |  |
+| <code>profile: Option&lt;String&gt;</code> |  |
 | <code>release: bool</code> |  |
+| <code>target_dir: Option&lt;PathBuf&gt;</code> |  |
 | <code>tests: bool</code> |  |
 | <code>token: String</code> |  |
 | <code>workspace: bool</code> |  |
@@ -209,6 +244,35 @@
 **Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Default</code>, <code>Debug</code>, <code>Copy</code>, <code>StructuralPartialEq</code>
 
 
+### `TargetSel`
+
+**Methods**
+
+| Method | Description |
+| --- | --- |
+| <code>all_targets() -&gt; Self</code> |  |
+| <code>from_targets(targets: <a href="#targets">Targets</a>) -&gt; Self</code> |  |
+| <code>is_default(&amp;self) -&gt; bool</code> |  |
+| <code>pick(&amp;self, kind: build::select::Kind) -&gt; &amp;<a href="#pick">Pick</a></code> |  |
+| <code>targets(&amp;self) -&gt; Option&lt;<a href="#targets">Targets</a>&gt;</code> |  |
+| <code>units&lt;'a&gt;(&amp;self, pkg: &amp;'a cargo::Package, features: &amp;[String]) -&gt; Result&lt;Vec&lt;(&amp;'a cargo::Target, build::select::Kind, build::select::Mode)&gt;&gt;</code> |  |
+| <code>validate(&amp;self, meta: &amp;cargo::Metadata, roots: &amp;[String]) -&gt; Result&lt;()&gt;</code> |  |
+| <code>wants_bin(&amp;self, name: &amp;str) -&gt; bool</code> |  |
+| <code>wants_dev(&amp;self) -&gt; bool</code> |  |
+
+**Fields**
+
+| Field | Description |
+| --- | --- |
+| <code>benches: <a href="#pick">Pick</a></code> |  |
+| <code>bins: <a href="#pick">Pick</a></code> |  |
+| <code>examples: <a href="#pick">Pick</a></code> |  |
+| <code>lib: bool</code> |  |
+| <code>tests: <a href="#pick">Pick</a></code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Default</code>, <code>Debug</code>, <code>StructuralPartialEq</code>
+
+
 ### `Targets`
 
 **Fields**
@@ -238,6 +302,7 @@
 | <code>no_run: bool</code> |  |
 | <code>only: Vec&lt;String&gt;</code> |  |
 | <code>release: bool</code> |  |
+| <code>target_dir: Option&lt;PathBuf&gt;</code> |  |
 | <code>workspace: bool</code> |  |
 
 **Trait implementations:** <code>Default</code>, <code>Debug</code>
@@ -279,6 +344,117 @@
 **Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Debug</code>, <code>Copy</code>, <code>StructuralPartialEq</code>
 
 
+### `Location`
+
+**Methods**
+
+| Method | Description |
+| --- | --- |
+| <code>parse(raw: &amp;str) -&gt; Result&lt;Self&gt;</code> |  |
+
+**Fields**
+
+| Field | Description |
+| --- | --- |
+| <code>Ssh::host: String</code> |  |
+| <code>Ssh::path: String</code> |  |
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>Dir(PathBuf)</code> |  |
+| <code>Ssh</code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Debug</code>, <code>Display</code>, <code>StructuralPartialEq</code>
+
+
+### `Phase`
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>Process(profile::phase::ProcessPhase)</code> |  |
+| <code>Run(<a href="#runphase">RunPhase</a>)</code> |  |
+| <code>Setup(profile::phase::SetupPhase)</code> |  |
+| <code>Unit(profile::phase::UnitPhase)</code> |  |
+| <code>Wrapper(profile::phase::WrapperPhase)</code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>Ord</code>, <code>PartialEq</code>, <code>PartialOrd</code>, <code>From&lt;<a href="#runphase">RunPhase</a>&gt;</code>, <code>Debug</code>, <code>Hash</code>, <code>Copy</code>, <code>StructuralPartialEq</code>, <code>Serialize</code>, <code>Deserialize&lt;'de&gt;</code>
+
+
+### `Pick`
+
+**Methods**
+
+| Method | Description |
+| --- | --- |
+| <code>add(&amp;mut self, name: &amp;str)</code> |  |
+| <code>is_none(&amp;self) -&gt; bool</code> |  |
+| <code>names(&amp;self) -&gt; &amp;[String]</code> |  |
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>All</code> |  |
+| <code>Named(Vec&lt;String&gt;)</code> |  |
+| <code>None</code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Default</code>, <code>Debug</code>, <code>StructuralPartialEq</code>
+
+
+### `ProfileCommand`
+
+**Fields**
+
+| Field | Description |
+| --- | --- |
+| <code>Diff::base: String</code> |  |
+| <code>Diff::head: String</code> |  |
+| <code>Diff::json: bool</code> |  |
+| <code>List::json: bool</code> |  |
+| <code>List::limit: usize</code> |  |
+| <code>Show::html: Option&lt;PathBuf&gt;</code> |  |
+| <code>Show::id: Option&lt;String&gt;</code> |  |
+| <code>Show::json: bool</code> |  |
+| <code>Show::trace: Option&lt;PathBuf&gt;</code> |  |
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>Diff</code> |  |
+| <code>List</code> |  |
+| <code>Show</code> |  |
+
+
+### `RemoteSource`
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>Config</code> |  |
+| <code>Env</code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Debug</code>, <code>Copy</code>, <code>StructuralPartialEq</code>
+
+
+### `RunPhase`
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>Fallback</code> |  |
+| <code>Run</code> |  |
+| <code>TestRun</code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>Ord</code>, <code>PartialEq</code>, <code>PartialOrd</code>, <code>Debug</code>, <code>Hash</code>, <code>Copy</code>, <code>StructuralPartialEq</code>, <code>Serialize</code>, <code>Deserialize&lt;'de&gt;</code>
+
+
 ### `RustcOutcome`
 
 **Variants**
@@ -311,6 +487,11 @@
 <pre>pub fn <a href="#add_to_profiles">add_to_profiles</a>(files: &amp;[PathBuf], line: &amp;str, control: &amp;Path) -&gt; Result&lt;Vec&lt;PathBuf&gt;&gt;</pre>
 
 
+### `begin_profile`
+
+<pre>pub fn <a href="#begin_profile">begin_profile</a>(command: &amp;[String], dir: &amp;Path) -&gt; <a href="#profilerecording">ProfileRecording</a></pre>
+
+
 ### `cargo_home`
 
 <pre>pub fn <a href="#cargo_home">cargo_home</a>() -&gt; PathBuf</pre>
@@ -339,6 +520,11 @@
 ### `check_real_cargo`
 
 <pre>pub fn <a href="#check_real_cargo">check_real_cargo</a>(real_cargo: &amp;Path, control: &amp;Path) -&gt; Result&lt;()&gt;</pre>
+
+
+### `check_selected`
+
+<pre>pub fn <a href="#check_selected">check_selected</a>(dir: &amp;Path, packages: &amp;[String], home: &amp;Path, opts: <a href="#checkopts">CheckOpts</a>, sel: &amp;<a href="#targetsel">TargetSel</a>) -&gt; Result&lt;i32&gt;</pre>
 
 
 ### `control_home`
@@ -421,9 +607,19 @@
 <pre>pub fn <a href="#path_remove">path_remove</a>(path: &amp;str, dir: &amp;str) -&gt; Option&lt;String&gt;</pre>
 
 
+### `profile_command`
+
+<pre>pub fn <a href="#profile_command">profile_command</a>(home: &amp;Path, command: &amp;<a href="#profilecommand">ProfileCommand</a>) -&gt; Result&lt;String&gt;</pre>
+
+
 ### `profile_line`
 
 <pre>pub fn <a href="#profile_line">profile_line</a>(home: &amp;Path, control: &amp;Path) -&gt; String</pre>
+
+
+### `profile_span`
+
+<pre>pub fn <a href="#profile_span">profile_span</a>&lt;T&gt;(phase: impl Into&lt;<a href="#phase">Phase</a>&gt;, work: impl FnOnce() -&gt; T) -&gt; T</pre>
 
 
 ### `profiles`
@@ -431,9 +627,24 @@
 <pre>pub fn <a href="#profiles">profiles</a>(home: &amp;Path, shell: Option&lt;&amp;Path&gt;, zdotdir: Option&lt;&amp;Path&gt;) -&gt; Vec&lt;PathBuf&gt;</pre>
 
 
+### `pull`
+
+<pre>pub fn <a href="#pull">pull</a>(home: &amp;Path) -&gt; Result&lt;(<a href="#location">Location</a>, <a href="#transferreport">TransferReport</a>)&gt;</pre>
+
+
 ### `purge`
 
 <pre>pub fn <a href="#purge">purge</a>(home: &amp;Path) -&gt; Result&lt;bool&gt;</pre>
+
+
+### `push`
+
+<pre>pub fn <a href="#push">push</a>(home: &amp;Path, units: Option&lt;&amp;Path&gt;) -&gt; Result&lt;(<a href="#location">Location</a>, <a href="#transferreport">TransferReport</a>)&gt;</pre>
+
+
+### `raise_open_file_limit`
+
+<pre>pub fn <a href="#raise_open_file_limit">raise_open_file_limit</a>() -&gt; Result&lt;()&gt;</pre>
 
 
 ### `ready`
@@ -446,6 +657,11 @@
 <pre>pub fn <a href="#refresh_shim">refresh_shim</a>(running: &amp;Path, control: &amp;Path, cargo_home: &amp;Path) -&gt; Result&lt;bool&gt;</pre>
 
 
+### `remote`
+
+<pre>pub fn <a href="#remote">remote</a>(home: &amp;Path) -&gt; Result&lt;Option&lt;(<a href="#location">Location</a>, <a href="#remotesource">RemoteSource</a>)&gt;&gt;</pre>
+
+
 ### `remove_from_profiles`
 
 <pre>pub fn <a href="#remove_from_profiles">remove_from_profiles</a>(files: &amp;[PathBuf], line: &amp;str, control: &amp;Path) -&gt; Result&lt;Vec&lt;PathBuf&gt;&gt;</pre>
@@ -454,6 +670,11 @@
 ### `report_error`
 
 <pre>pub fn <a href="#report_error">report_error</a>(message: impl Display)</pre>
+
+
+### `request_timings`
+
+<pre>pub fn <a href="#request_timings">request_timings</a>()</pre>
 
 
 ### `run_cmd`
@@ -501,9 +722,19 @@
 <pre>pub fn <a href="#set_quiet">set_quiet</a>(on: bool)</pre>
 
 
+### `set_remote`
+
+<pre>pub fn <a href="#set_remote">set_remote</a>(home: &amp;Path, location: Option&lt;&amp;<a href="#location">Location</a>&gt;) -&gt; Result&lt;()&gt;</pre>
+
+
 ### `set_trace`
 
 <pre>pub fn <a href="#set_trace">set_trace</a>(on: bool)</pre>
+
+
+### `spawn_pull`
+
+<pre>pub fn <a href="#spawn_pull">spawn_pull</a>(home: &amp;Path) -&gt; Result&lt;()&gt;</pre>
 
 
 ### `stock_cargo`
@@ -518,7 +749,7 @@
 
 ### `sweep_dir`
 
-<pre>pub fn <a href="#sweep_dir">sweep_dir</a>(dir: &amp;Path, home: &amp;Path) -&gt; Result&lt;<a href="#sweepreport">SweepReport</a>&gt;</pre>
+<pre>pub fn <a href="#sweep_dir">sweep_dir</a>(dir: &amp;Path, target: Option&lt;&amp;Path&gt;, home: &amp;Path) -&gt; Result&lt;<a href="#sweepreport">SweepReport</a>&gt;</pre>
 
 
 ### `test_package`
@@ -546,6 +777,16 @@
 ### `LAYOUT`
 
 <pre>pub const <a href="#layout">LAYOUT</a>: &amp;str</pre>
+
+
+### `PULL_EVERY`
+
+<pre>pub const <a href="#pull_every">PULL_EVERY</a>: Duration</pre>
+
+
+### `REMOTE_ENV`
+
+<pre>pub const <a href="#remote_env">REMOTE_ENV</a>: &amp;str</pre>
 
 
 ---

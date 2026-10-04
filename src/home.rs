@@ -36,6 +36,18 @@ pub(crate) fn resolve_path(p: &Path) -> PathBuf {
 
 const TAG: &str = "Signature: 8a477f597d28d172789f06886806bc55\n# Artificer compile cache. `artificer uninstall --purge` deletes this directory.\n";
 
+const LEGACY_TAG: &str = "Signature: 8a477f597d28d172789f06886806bc55\n";
+
+const LEGACY_MARKERS: [&str; 3] = ["mods.toml", "builds.jsonl", "stat.hits"];
+
+fn legacy(home: &Path) -> bool {
+    std::fs::read_to_string(home.join("CACHEDIR.TAG")).is_ok_and(|text| text == LEGACY_TAG)
+        && home.join("units").is_dir()
+        && LEGACY_MARKERS
+            .iter()
+            .any(|marker| home.join(marker).is_file())
+}
+
 pub(crate) fn owned(home: &Path) -> bool {
     let tag = home.join("CACHEDIR.TAG");
     std::fs::read_to_string(&tag).is_ok_and(|text| text == TAG)
@@ -79,6 +91,9 @@ pub fn ready(home: &Path) -> bool {
     }
     if owned(home) {
         return true;
+    }
+    if legacy(home) {
+        return write_tag(&tag).is_ok();
     }
     if tag.exists() {
         return false;

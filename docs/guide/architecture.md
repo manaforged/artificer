@@ -75,7 +75,11 @@ src/build.rs reads Cargo metadata and resolves the package graph.
 src/settings.rs resolves one profile into the exact rustc configuration.
 src/features.rs narrows the graph to the per-invocation feature set.
 src/session.rs carries the shared caches. src/schedule.rs compiles ready
-graph nodes concurrently.
+graph nodes concurrently. A library starts once its dependencies have
+written their metadata, as Cargo's pipelining does; a unit that links
+waits for every dependency to finish. A package's build script is its own
+unit: it starts once its build-dependencies are built and the build
+scripts of its `links` dependencies have run.
 
 src/compile.rs builds rustc and rustdoc commands through src/invoke.rs.
 It stores dependency artifacts in the session so each downstream key
@@ -122,7 +126,9 @@ set of build inputs or output semantics.
 ## Process coordination
 
 On Unix, src/jobs.rs maintains a shared FIFO jobserver. Each process holds a shared lifetime lock.
-The pool is refilled only when no existing process holds that lock. Windows has no
+The pool is refilled only when no existing process holds that lock. Each build session also
+owns a private FIFO pool under `jobservers/` in the store; a worker takes one token for each
+rustc, rustc's extra threads draw the rest, and the pool is removed when the session ends. Windows has no
 cross-process pool: each Artificer process schedules its own workers.
 
 Cross-process work is deduplicated per key: one `cargo metadata` resolve,

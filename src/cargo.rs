@@ -32,6 +32,8 @@ pub struct Metadata {
     pub resolve: Option<Resolve>,
     #[serde(default)]
     pub workspace_members: Vec<String>,
+    #[serde(default)]
+    pub workspace_default_members: Option<Vec<String>>,
     #[serde(skip)]
     pub(crate) pkg_ix: OnceLock<HashMap<String, usize>>,
     #[serde(skip)]
@@ -62,6 +64,8 @@ pub struct Package {
     pub source: Option<String>,
     pub manifest_path: PathBuf,
     pub targets: Vec<Target>,
+    #[serde(default)]
+    pub default_run: Option<String>,
     #[serde(default)]
     pub links: Option<String>,
     #[serde(default, rename = "features")]
@@ -155,6 +159,12 @@ impl Package {
     }
 }
 
+impl DepKind {
+    pub fn is_build(&self) -> bool {
+        self.kind.as_deref() == Some("build")
+    }
+}
+
 impl Dep {
     pub fn is_dev(&self) -> bool {
         self.dep_kinds
@@ -176,7 +186,7 @@ impl Dep {
     pub fn usable_for_script(&self) -> bool {
         self.dep_kinds
             .iter()
-            .any(|k| k.kind.as_deref() == Some("build") && !disabled_cfg(k.target.as_deref()))
+            .any(|k| k.is_build() && !disabled_cfg(k.target.as_deref()))
     }
 
     pub fn usable_for_dev(&self) -> bool {
@@ -360,12 +370,15 @@ mod graph;
 #[cfg(all(test, unix))]
 use graph::same_package_id;
 pub use graph::{
-    closure_many, compile_deps, find_manifest, id_by_name, must_link, node, package, root_id,
-    test_closure_many, test_compile_deps,
+    build_only, closure_many, compile_deps, find_manifest, host_id, id_by_name, must_link, node,
+    package, root_id, test_closure_many, test_compile_deps,
 };
 
 mod metadata;
 pub use metadata::metadata_extra;
+
+mod kind;
+pub(crate) use kind::TargetKind;
 
 pub(crate) use cache::meta_key;
 

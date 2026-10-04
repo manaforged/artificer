@@ -5,7 +5,9 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 pub fn passthrough_reason(req: &ServeRequest, dev: bool, home: &Path) -> Result<Option<String>> {
-    crate::out::timed("gate", || passthrough_reason_inner(req, dev, home))
+    crate::profile::span(crate::profile::SetupPhase::Gate, || {
+        passthrough_reason_inner(req, dev, home)
+    })
 }
 
 fn passthrough_reason_inner(req: &ServeRequest, dev: bool, home: &Path) -> Result<Option<String>> {
@@ -79,15 +81,6 @@ fn config_location_reason(pkg_dir: &Path) -> Result<Option<String>> {
 }
 
 fn manifest_reason(req: &ServeRequest, meta: &cargo::Metadata, pkg_dir: &Path) -> Option<String> {
-    let mut identities = std::collections::HashSet::new();
-    for pkg in &meta.packages {
-        if !identities.insert((&pkg.name, &pkg.version)) {
-            return Some(
-                "packages with the same name and version from different sources belong to Cargo"
-                    .into(),
-            );
-        }
-    }
     let ws = cargo::root(meta, pkg_dir);
     let profile = if req.release {
         "release"
@@ -125,7 +118,10 @@ fn config_reason(doctest: bool, pkg_dir: &Path, home: &Path) -> Result<Option<St
     let print = key::rustc_print_cfg(home, pkg_dir)?;
     let version = key::rustc_version_in(home, pkg_dir)?;
     let host = key::rustc_host(&version)?;
-    Ok(config::resolve_target_flags(&cfg, &host, &print).err())
+    if let Err(reason) = config::resolve_target_flags(&cfg, &host, &print) {
+        return Ok(Some(reason));
+    }
+    Ok(config::resolve_host_tools(&cfg.target_tools, &host, &print).err())
 }
 
 fn modeled<T>(result: Result<T>) -> Result<std::result::Result<T, String>> {
@@ -145,7 +141,9 @@ fn model_fallback(error: &anyhow::Error) -> Option<String> {
 }
 
 fn below_min_cargo(home: &Path) -> Result<Option<String>> {
-    let version = crate::out::timed("cargo --version", || cargo::cargo_version(home))?;
+    let version = crate::profile::span(crate::profile::SetupPhase::CargoVersion, || {
+        cargo::cargo_version(home)
+    })?;
     Ok(older_than(&version))
 }
 

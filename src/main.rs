@@ -18,6 +18,8 @@ impl From<ExitCode> for Dispatch {
 }
 
 fn main() -> ExitCode {
+    #[cfg(unix)]
+    drop(artificer::raise_open_file_limit());
     if let Some(path) = artificer::toolchain_path() {
         // SAFETY: main has not started another thread yet.
         unsafe { env::set_var("PATH", path) };
@@ -42,16 +44,48 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    handled(args, &args_os)
+}
+
+fn handled(args: Vec<String>, args_os: &[OsString]) -> ExitCode {
+    let recording = profiled(&args)
+        .then(|| artificer::begin_profile(&args, &env::current_dir().unwrap_or_default()));
     let result = match run(args) {
         Err(error) if error.is::<artificer::Unmodeled>() => Ok(fallback(error)),
         result => result,
     };
-    match result {
-        Ok(Dispatch::Fallback) if shim() => stock(&args_os).unwrap_or_else(failed),
-        Ok(Dispatch::Fallback) => ExitCode::from(2),
-        Ok(Dispatch::Completed(code)) => code,
-        Err(error) => failed(error),
+    let (code, broke) = settle(result, args_os);
+    if let Some(recording) = recording {
+        recording.finish(&artificer::default_home(), broke);
     }
+    code
+}
+
+fn settle(result: Result<Dispatch>, args_os: &[OsString]) -> (ExitCode, bool) {
+    match result {
+        Ok(Dispatch::Fallback) if shim() => (
+            artificer::profile_span(artificer::RunPhase::Fallback, || stock(args_os))
+                .unwrap_or_else(failed),
+            false,
+        ),
+        Ok(Dispatch::Fallback) => (ExitCode::from(2), false),
+        Ok(Dispatch::Completed(code)) => (code, false),
+        Err(error) => (failed(error), true),
+    }
+}
+
+fn profiled(args: &[String]) -> bool {
+    matches!(
+        help::subcommand(args),
+        Some((
+            help::Sub::Check
+                | help::Sub::Build
+                | help::Sub::Test
+                | help::Sub::Run
+                | help::Sub::Warm,
+            _
+        ))
+    )
 }
 
 const SHIM_REFRESHED: &str = "ARTIFICER_SHIM_REFRESHED";
@@ -194,6 +228,10 @@ fn store_tool(sub: help::Sub, rest: &[String]) -> Result<ExitCode> {
         Sub::Export => export_cmd(rest),
         Sub::Import => import_cmd(rest),
         Sub::WhyMiss => why_miss_cmd(rest),
+        Sub::Remote => remote::remote_cmd(rest),
+        Sub::Pull => remote::pull_cmd(rest),
+        Sub::Push => remote::push_cmd(rest),
+        Sub::Profile => profile::profile_cmd(rest),
         _ => why_fallback_cmd(rest),
     }
 }
@@ -210,6 +248,9 @@ fn parsed(args: &[String]) -> std::result::Result<(cli::BuildArgs, help::Sub), D
         }
     };
     let sub = help::lookup(&a.cmd).ok_or(Dispatch::Fallback)?;
+    if a.timings {
+        artificer::request_timings();
+    }
     artificer::set_quiet(a.quiet);
     artificer::set_trace(a.verbose);
     if let Some(choice) = a.color {
@@ -232,16 +273,16 @@ fn build(args: &[String]) -> Result<Dispatch> {
     }
     let dir = a.dir.clone().map_or_else(env::current_dir, Ok)?;
     if sub == help::Sub::Clean {
-        return clean(&dir, &home);
+        return clean(&dir, a.target_dir.as_deref(), &home);
     }
     let mut req = request(&a, sub, dir);
-    if let Some(reason) = artificer::passthrough_reason(&req, dev(&a, sub, &req), &home)? {
+    if let Some(reason) = artificer::passthrough_reason(&req, dev(&a, sub), &home)? {
         return Ok(fallback(reason));
     }
     let code = match sub {
         help::Sub::Run => run_target(&a, &req, &home),
         help::Sub::Test => test(&mut req, &home),
-        _ => check(&mut req, &home),
+        _ => check(&mut req, &a.select, &home),
     }?;
     Ok(code.into())
 }
@@ -264,129 +305,20 @@ fn declined(home: &Path) -> Result<Option<Dispatch>> {
     Ok(None)
 }
 
-fn clean(dir: &Path, home: &Path) -> Result<Dispatch> {
-    let report = artificer::sweep_dir(dir, home)?;
-    eprintln!(
-        "artificer: removed {} incremental dir(s), {} scratch copy(ies)",
-        report.incremental_dirs, report.scratch_dirs
-    );
-    eprintln!(
-        "artificer: evicted {} unit(s), {:.1} MB",
-        report.evicted_units,
-        report.evicted_bytes as f64 / 1_048_576.0
-    );
-    Ok(ExitCode::from(0).into())
-}
-
-fn request(a: &cli::BuildArgs, sub: help::Sub, dir: PathBuf) -> artificer::ServeRequest {
-    let warm = sub == help::Sub::Warm;
-    artificer::ServeRequest {
-        token: String::new(),
-        op: a.cmd.clone(),
-        dir,
-        packages: a.packages.clone(),
-        json: a.json,
-        workspace: a.workspace || warm,
-        all_features: a.all_features,
-        features: a.features.clone(),
-        no_default: a.no_default,
-        meta_flags: a.meta_flags.clone(),
-        release: a.release,
-        link: sub == help::Sub::Build,
-        no_run: a.no_run,
-        lib: a.lib_only,
-        doc: a.doc_only,
-        only: a.only.clone(),
-        tests: a.tests,
-        all_targets: a.all_targets,
-        args: a.pass.clone(),
-    }
-}
-
-fn dev(a: &cli::BuildArgs, sub: help::Sub, req: &artificer::ServeRequest) -> bool {
-    match sub {
-        help::Sub::Test => true,
-        help::Sub::Run => a.example.is_some(),
-        _ => req.tests || req.all_targets,
-    }
-}
-
-fn run_target(a: &cli::BuildArgs, req: &artificer::ServeRequest, home: &Path) -> Result<ExitCode> {
-    let code = artificer::run_cmd(
-        &req.dir,
-        &req.packages,
-        a.bin.as_deref(),
-        a.example.as_deref(),
-        home,
-        artificer::CheckOpts {
-            all_features: req.all_features,
-            features: req.features.clone(),
-            no_default: req.no_default,
-            meta_flags: req.meta_flags.clone(),
-            release: req.release,
-            ..Default::default()
-        },
-        &req.args,
-    )?;
-    Ok(child_exit(code))
-}
-
-fn test(req: &mut artificer::ServeRequest, home: &Path) -> Result<ExitCode> {
-    if let Some(code) = artificer::serve_try(home, req) {
-        return Ok(child_exit(code?));
-    }
-    let code = artificer::test_package(
-        &req.dir,
-        &req.packages,
-        home,
-        &artificer::TestOpts {
-            no_run: req.no_run,
-            json: req.json,
-            workspace: req.workspace,
-            all_features: req.all_features,
-            features: req.features.clone(),
-            no_default: req.no_default,
-            meta_flags: req.meta_flags.clone(),
-            release: req.release,
-            lib: req.lib,
-            doc: req.doc,
-            only: req.only.clone(),
-            args: req.args.clone(),
-        },
-    )?;
-    Ok(child_exit(code))
-}
-
-fn check(req: &mut artificer::ServeRequest, home: &Path) -> Result<ExitCode> {
-    if let Some(code) = artificer::serve_try(home, req) {
-        return Ok(child_exit(code?));
-    }
-    let code = artificer::check_cmd(
-        &req.dir,
-        &req.packages,
-        home,
-        artificer::CheckOpts {
-            json: req.json,
-            workspace: req.workspace,
-            all_features: req.all_features,
-            features: req.features.clone(),
-            no_default: req.no_default,
-            meta_flags: req.meta_flags.clone(),
-            release: req.release,
-            link: req.link,
-            targets: artificer::Targets {
-                tests: req.tests,
-                all: req.all_targets,
-            },
-        },
-    )?;
-    Ok(child_exit(code))
-}
-
+#[path = "main/clean.rs"]
+mod clean;
 #[path = "main/commands.rs"]
 mod commands;
+#[path = "main/dispatch.rs"]
+mod dispatch;
+use clean::clean;
+use dispatch::{check, dev, request, run_target, test};
 #[path = "main/help.rs"]
 mod help;
+#[path = "main/profile.rs"]
+mod profile;
+#[path = "main/remote.rs"]
+mod remote;
 use commands::{
     enable_cmd, export_cmd, import_cmd, install_cmd, mods_cmd, serve_cmd, stat_cmd, uninstall_cmd,
     why_fallback_cmd, why_miss_cmd,

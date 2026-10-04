@@ -54,20 +54,33 @@ pub fn export(home: &Path, dest: &Path, days: u64, max_bytes: u64) -> Result<Tra
 }
 
 pub fn import(home: &Path, src: &Path) -> Result<TransferReport> {
-    crate::home::claim(home)?;
-    let src_units = src.join("units").join(store::LAYOUT);
-    let mut report = TransferReport { units: 0, bytes: 0 };
-    if !src_units.is_dir() {
-        return Ok(report);
+    import_units(home, src, &complete_units(src)?)
+}
+
+pub(crate) fn complete_units(home: &Path) -> Result<Vec<String>> {
+    let root = home.join("units").join(store::LAYOUT);
+    let mut names = Vec::new();
+    if !root.is_dir() {
+        return Ok(names);
     }
-    for entry in fs::read_dir(&src_units)? {
+    for entry in fs::read_dir(&root)? {
         let entry = entry?;
         let dir = entry.path();
-        if !entry.file_type()?.is_dir() || !dir.join("ok").is_file() || !dir.join("out").is_dir() {
-            continue;
+        if entry.file_type()?.is_dir() && dir.join("ok").is_file() && dir.join("out").is_dir() {
+            names.push(entry.file_name().to_string_lossy().into_owned());
         }
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if let Some(bytes) = copy_unit(src, home, &name, None)? {
+    }
+    Ok(names)
+}
+
+pub(crate) fn import_units(home: &Path, src: &Path, names: &[String]) -> Result<TransferReport> {
+    crate::home::claim(home)?;
+    let mut report = TransferReport { units: 0, bytes: 0 };
+    for name in names {
+        if let Some(bytes) = copy_unit(src, home, name, None)? {
+            if let Some(lineage) = store::labelled(&Slot::new(home, name)) {
+                store::adopt(home, &lineage, name);
+            }
             report.units += 1;
             report.bytes += bytes;
         }

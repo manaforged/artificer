@@ -26,6 +26,7 @@ pub fn stop(home: &Path) -> Result<()> {
             features: Vec::new(),
             no_default: false,
             meta_flags: Vec::new(),
+            target_dir: None,
             release: false,
             link: false,
             no_run: false,
@@ -35,6 +36,7 @@ pub fn stop(home: &Path) -> Result<()> {
             tests: false,
             all_targets: false,
             args: Vec::new(),
+            profile: None,
         },
     ));
     control(home, "serve.stop", b"")?;
@@ -82,6 +84,7 @@ pub fn ping(home: &Path) -> bool {
         features: Vec::new(),
         no_default: false,
         meta_flags: Vec::new(),
+        target_dir: None,
         release: false,
         link: false,
         no_run: false,
@@ -91,6 +94,7 @@ pub fn ping(home: &Path) -> bool {
         tests: false,
         all_targets: false,
         args: Vec::new(),
+        profile: None,
     };
     probe(home, &req).is_ok_and(|r| r.ok && r.stderr.contains("pong"))
 }
@@ -104,15 +108,7 @@ pub fn spawn(home: &Path) -> Result<()> {
     }
     secure_home(home)?;
     let log = secure_file(&home.join("serve.log"))?;
-    let mut exe = std::env::current_exe().context("current_exe")?;
-    if exe
-        .file_stem()
-        .is_some_and(|name| name.eq_ignore_ascii_case("cargo"))
-    {
-        exe = crate::cargo::cargo_home()
-            .join("bin")
-            .join(format!("artificer{}", std::env::consts::EXE_SUFFIX));
-    }
+    let exe = crate::install::self_launcher().context("current_exe")?;
     start(&exe, home, log).context("spawn artificer serve")?;
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(2) {
@@ -177,63 +173,84 @@ pub(super) fn compiler_env_snapshot() -> String {
     key.full_digest()
 }
 
-pub fn try_run(home: &Path, req: &mut Request) -> Option<Result<i32>> {
+fn served(home: &Path, req: &mut Request) -> Option<(Reply, Instant)> {
+    let sent = Instant::now();
+    if let Ok(reply) = call(home, req) {
+        return Some((reply, sent));
+    }
+    spawn(home).ok()?;
+    if fs::read_to_string(home.join("serve.env")).ok()? != compiler_env_snapshot() {
+        return None;
+    }
+    req.token = read_token(home).ok()?;
+    let sent = Instant::now();
+    call(home, req).ok().map(|reply| (reply, sent))
+}
+
+enum Readiness {
+    Use,
+    Skip,
+    Failed(anyhow::Error),
+}
+
+fn readiness(home: &Path) -> Readiness {
     if cfg!(windows)
         || std::env::var_os("ARTIFICER_NOSERVE").is_some()
         || crate::schedule::explicit_jobs()
     {
-        return None;
+        return Readiness::Skip;
     }
     if let Ok(recorded) = fs::read_to_string(home.join("serve.env"))
         && recorded != compiler_env_snapshot()
     {
-        return None;
+        return Readiness::Skip;
     }
     match crate::mods::load(home) {
-        Ok(mods) if !mods.serve => return None,
+        Ok(mods) if !mods.serve => return Readiness::Skip,
         Ok(_) => {}
-        Err(error) => return Some(Err(error)),
+        Err(error) => return Readiness::Failed(error),
     }
     if fs::read_to_string(home.join("serve.build")).is_ok_and(|b| b != build_stamp()) {
         return match stop(home) {
-            Ok(()) => None,
-            Err(error) => Some(Err(error)),
+            Ok(()) => Readiness::Skip,
+            Err(error) => Readiness::Failed(error),
         };
     }
-    req.token = read_token(home).unwrap_or_default();
-    let r = match call(home, req) {
-        Ok(r) => r,
-        Err(_) => {
-            spawn(home).ok()?;
-            if fs::read_to_string(home.join("serve.env")).ok()? != compiler_env_snapshot() {
-                return None;
-            }
-            req.token = read_token(home).ok()?;
-            call(home, req).ok()?
-        }
-    };
-    if r.ok {
-        if !r.stdout.is_empty() {
-            print!("{}", r.stdout);
-        }
-        if !r.stderr.is_empty() {
-            eprint!("{}", r.stderr);
-        }
-        return Some(Ok(r.code));
+    Readiness::Use
+}
+
+fn outcome(reply: Reply) -> Option<Result<i32>> {
+    if reply.ok {
+        crate::out::write_out(&reply.stdout);
+        crate::out::write_err(&reply.stderr);
+        return Some(Ok(reply.code));
     }
-    if r.err == "bad token" {
+    if reply.err == "bad token" {
         return None;
     }
-    if !r.stderr.is_empty() {
-        eprint!("{}", r.stderr);
+    crate::out::write_err(&reply.stderr);
+    if reply.err.is_empty() {
+        return Some(Ok(reply.code));
     }
-    if !r.err.is_empty() {
-        Some(Err(if r.code == 2 {
-            crate::cargo::Unmodeled(r.err).into()
-        } else {
-            anyhow::anyhow!("{}", r.err)
-        }))
+    Some(Err(if reply.code == 2 {
+        crate::cargo::Unmodeled(reply.err).into()
     } else {
-        Some(Ok(r.code))
+        anyhow::anyhow!("{}", reply.err)
+    }))
+}
+
+pub fn try_run(home: &Path, req: &mut Request) -> Option<Result<i32>> {
+    match readiness(home) {
+        Readiness::Use => {}
+        Readiness::Skip => return None,
+        Readiness::Failed(error) => return Some(Err(error)),
     }
+    req.token = read_token(home).unwrap_or_default();
+    req.profile = crate::profile::id();
+    let (mut reply, sent) =
+        crate::profile::span(crate::profile::WrapperPhase::Serve, || served(home, req))?;
+    if let Some(part) = reply.profile.take() {
+        crate::profile::merge(part, sent);
+    }
+    outcome(reply)
 }

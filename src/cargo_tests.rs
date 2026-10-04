@@ -150,6 +150,11 @@ fn reroot_accepts_a_virtual_workspace_root() -> Result<()> {
     let mut moved = first;
     assert!(reroot(&mut moved, &two.join("Cargo.toml")));
     assert_eq!(moved.workspace_root, two);
+    let defaults = moved.workspace_default_members.clone().unwrap_or_default();
+    assert!(!defaults.is_empty());
+    for id in &defaults {
+        assert!(moved.packages.iter().any(|p| &p.id == id), "{id}");
+    }
     Ok(())
 }
 
@@ -201,6 +206,7 @@ fn reroot_refuses_a_graph_with_external_path_deps() -> Result<()> {
         source: None,
         manifest_path,
         targets: Vec::new(),
+        default_run: None,
         links: None,
         declared: std::collections::BTreeMap::new(),
     };
@@ -211,6 +217,7 @@ fn reroot_refuses_a_graph_with_external_path_deps() -> Result<()> {
         ],
         resolve: None,
         workspace_members: Vec::new(),
+        workspace_default_members: None,
         pkg_ix: OnceLock::new(),
         node_ix: OnceLock::new(),
         workspace_root: root.clone(),

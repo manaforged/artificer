@@ -14,6 +14,7 @@ pub struct TestOpts {
     pub doc: bool,
     pub only: Vec<String>,
     pub args: Vec<String>,
+    pub target_dir: Option<PathBuf>,
 }
 
 pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpts) -> Result<i32> {
@@ -25,7 +26,15 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
         opts.no_default,
         &opts.meta_flags,
     );
-    let plan = plan(dir, packages, home, &extra, opts.workspace, true)?;
+    let plan = plan(
+        dir,
+        packages,
+        home,
+        &extra,
+        opts.workspace,
+        true,
+        opts.target_dir.as_deref(),
+    )?;
     let (meta, roots) = (&plan.meta, &plan.roots);
     let order = cargo::test_closure_many(meta, roots)?;
     let ws = cargo::root(meta, &plan.pkg_dir);
@@ -37,9 +46,11 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
         profile,
         &meta.workspace_members,
         &meta.packages,
+        opts.target_dir.as_deref(),
     )?;
     sess.json = opts.json;
     sess.primary = roots.iter().cloned().collect();
+    sess.build_only = cargo::build_only(meta, roots, &order, true);
     if !opts.doc {
         sess.set_target_tmpdir(target_tmpdir(&sess.settings)?);
         sess.ship = roots.iter().cloned().collect();
@@ -48,14 +59,15 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
         lib: opts.lib,
         only: opts.only.clone(),
     };
-    let (compiled, mut harnesses) = crate::out::timed("schedule", || {
-        if opts.doc {
-            let compiled = schedule::compile_ids(&sess, meta, &order)?;
-            Ok((compiled, std::collections::HashMap::new()))
-        } else {
-            schedule::compile_ids_and_tests(&sess, meta, &order, roots, &sel)
-        }
-    })?;
+    let (compiled, mut harnesses) =
+        crate::profile::span(crate::profile::WrapperPhase::Schedule, || {
+            if opts.doc {
+                let compiled = schedule::compile_ids(&sess, meta, &order)?;
+                Ok((compiled, std::collections::HashMap::new()))
+            } else {
+                schedule::compile_ids_and_tests(&sess, meta, &order, roots, &sel)
+            }
+        })?;
     let mut bins: Vec<(String, compile::TestBin)> = Vec::new();
     for root in roots {
         if let Some(root_bins) = harnesses.remove(root) {
@@ -72,11 +84,7 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
     if !opts.doc {
         let profile_dir = sess.settings.profile_dir();
         artifact::deliver(roots, &compiled, &profile_dir)?;
-        let deps = profile_dir.join("deps");
-        for (_, bin) in &mut bins {
-            let file = artifact::deps_name(&bin.exe, &bin.target.name.replace('-', "_"));
-            bin.exe = artifact::place_exe(&bin.exe, &deps, &file)?;
-        }
+        place_tests(bins.iter_mut().map(|(_, bin)| bin), &profile_dir)?;
     }
     let graph_hits = compiled
         .values()
@@ -186,10 +194,14 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
     let next = Mutex::new(0usize);
     let jobs: Mutex<Vec<Option<Job>>> = Mutex::new(jobs.into_iter().map(Some).collect());
     std::thread::scope(|scope| {
-        for _ in 0..workers {
+        for worker in 0..workers {
             let sink = crate::out::current();
-            scope.spawn(|| {
+            let recorder = crate::profile::current();
+            let (sess, code, failed, next, jobs) = (&sess, &code, &failed, &next, &jobs);
+            scope.spawn(move || {
                 crate::out::attach(sink);
+                crate::profile::attach(recorder);
+                crate::profile::worker(worker);
                 loop {
                     let job = {
                         let mut n = next.lock().expect("test index");
@@ -207,7 +219,7 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
                     let mut run = match job {
                         Job::Bin { pkg, exe, label } => {
                             crate::out::status(crate::out::Status::Running, label);
-                            let mut run = std::process::Command::new(&exe);
+                            let mut run = sess.settings.exec_cmd(&exe);
                             run.current_dir(pkg.root());
                             cargo::set_package_env(&mut run, pkg);
                             run.args(&opts.args);
@@ -219,30 +231,24 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
                         }
                     };
                     crate::jobs::isolate(&mut run);
-                    let status = if capture {
-                        match run.output() {
-                            Ok(out) => {
+                    let ran = crate::profile::span(crate::profile::RunPhase::TestRun, || {
+                        if capture {
+                            crate::profile::output(&mut run).map(|out| {
                                 crate::out::replay(&out.stdout, &out.stderr);
                                 out.status
-                            }
-                            Err(e) => {
-                                let mut failed = failed.lock().expect("test spawn");
-                                if failed.is_none() {
-                                    *failed = Some(e.into());
-                                }
-                                return;
-                            }
+                            })
+                        } else {
+                            crate::profile::status(&mut run)
                         }
-                    } else {
-                        match run.status() {
-                            Ok(status) => status,
-                            Err(e) => {
-                                let mut failed = failed.lock().expect("test spawn");
-                                if failed.is_none() {
-                                    *failed = Some(e.into());
-                                }
-                                return;
+                    });
+                    let status = match ran {
+                        Ok(status) => status,
+                        Err(e) => {
+                            let mut failed = failed.lock().expect("test spawn");
+                            if failed.is_none() {
+                                *failed = Some(e.into());
                             }
+                            return;
                         }
                     };
                     if !status.success() {
@@ -266,6 +272,18 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
         .unwrap_or_else(std::sync::PoisonError::into_inner))
 }
 
+pub(super) fn place_tests<'b>(
+    bins: impl Iterator<Item = &'b mut compile::TestBin>,
+    profile_dir: &Path,
+) -> Result<()> {
+    let deps = profile_dir.join("deps");
+    for bin in bins {
+        let file = artifact::deps_name(&bin.exe, &bin.target.name.replace('-', "_"));
+        bin.exe = artifact::place_exe(&bin.exe, &deps, &file)?;
+    }
+    Ok(())
+}
+
 fn harness_label(pkg: &cargo::Package, bin: &compile::TestBin, ws: &Path) -> String {
     let src = bin
         .target
@@ -286,7 +304,7 @@ pub(super) fn json_profile(root: &Path, name: &str, test: bool) -> serde_json::V
     let mut debuginfo = 0;
     let mut assertions = false;
     let mut overflow = false;
-    let args = manifest::profile(root, name);
+    let args = manifest::profile(root, name, manifest::UnitUse::Runtime);
     for pair in args.windows(2).filter(|pair| pair[0] == "-C") {
         let Some((key, value)) = pair[1].split_once('=') else {
             continue;

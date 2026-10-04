@@ -26,12 +26,18 @@ The supported build commands accept the applicable subset of:
 - --workspace;
 - --features, --all-features, and --no-default-features;
 - --locked, --offline, and --frozen;
+- --target-dir DIR, which wins over `CARGO_TARGET_DIR` and `build.target-dir`;
 - --release and the dev or release profile names;
 - --message-format=human, =json, and =json-render-diagnostics;
+- --timings for build and test, which writes Cargo's HTML timing report;
 - -j/--jobs N, -q/--quiet, -v/--verbose, and --color auto|always|never;
-- --tests and --all-targets for check;
-- --bin and --example for run;
-- --no-run, --lib, --doc, and --test for test;
+- --lib, --bin NAME, --bins, --example NAME, --examples, --test NAME, and
+  --tests for check and build, with the same target selection as Cargo;
+- --bench NAME and --all-targets for check;
+- one --bin or one --example for run;
+- --no-run, --lib, --doc, --test, and --no-fail-fast for test. The test
+  runner runs every test binary and doc test, then exits with failure if
+  any failed;
 - a run argument tail;
 - one test filter and test-harness arguments after --.
 
@@ -41,7 +47,12 @@ input. Fallback cases include:
 - `--target` and target-specific environment rustflags;
 - bench and doc commands;
 - custom profiles;
-- build target selection outside run;
+- --benches, --bench and --all-targets on build, and target name patterns;
+- `--message-format short`;
+- a build that selects only some binaries of a package, or skips a
+  library's cdylib, dylib, or staticlib output;
+- JSON messages for a target selection other than the default, --tests, or
+  --all-targets;
 - Cargo aliases;
 - --keep-going, and a --color value outside auto, always, and never;
 - `[profile.*]` keys Artificer does not apply, unknown lint levels, and
@@ -65,6 +76,7 @@ directly to see the reason.
 | --- | --- |
 | artificer stat [--json] | Show cache size, entry counts, hit and miss totals, the last build, fallback count, and modes; `--json` prints one object |
 | artificer why-fallback [--limit N] | Show fallback reasons, most frequent first |
+| artificer profile [ID] | Show where a build spent its time; `list`, `diff BASE HEAD`, `--json`, `--trace FILE`, and `--html FILE` |
 | artificer why-miss CRATE | Show what changed between the last two key records of one crate |
 | artificer doctor | Check the mode, shim PATH precedence, real Cargo, store path, jobserver, store, rustc, fallbacks, daemon, and rust-analyzer |
 | artificer warm | Compile the current workspace into the shared store |
@@ -74,8 +86,11 @@ directly to see the reason.
 | artificer env | Print the shell command that puts the shim first on PATH |
 | artificer export DIR [--days N] [--max-gb N] | Copy units used in the last N days (default 7), newest first, under the size cap |
 | artificer import DIR | Add missing units from an exported directory |
+| artificer remote [set LOCATION \| off] | Show, set, or clear the remote store. LOCATION is `HOST:/ABSOLUTE/PATH` over SSH, or an absolute directory |
+| artificer pull | Add missing complete units from the remote store |
+| artificer push [--units FILE] | Send the remote store the units it lacks; over SSH the remote host runs `artificer import`. Builds run it in the background for the units they compiled |
 | artificer enable / disable | Persist caching state for the selected store |
-| artificer install [--no-modify-path] | Put the launchers and recorded Cargo path in place and add the shim to PATH (shell profiles on macOS and Linux, the user PATH on Windows); `--no-modify-path` skips this |
+| artificer install [--no-modify-path] [--remote LOCATION] | Put the launchers and recorded Cargo path in place and add the shim to PATH (shell profiles on macOS and Linux, the user PATH on Windows); `--no-modify-path` skips this; `--remote LOCATION` sets the remote store and starts the first pull in the background |
 | artificer uninstall [--purge] | Remove the launchers, recorded Cargo path, and the PATH entries install added; run `cargo uninstall artificer-build` when Cargo installed Artificer; `--purge` also deletes the cache |
 | artificer mods | List compile modes |
 | artificer help COMMAND, artificer COMMAND --help | Print the usage and options of one command |
@@ -84,8 +99,9 @@ directly to see the reason.
 
 `artificer clean` evicts expired units, enforces the store cap, and
 deletes `target/<profile>/{incremental,deps,.fingerprint,build}`. It does
-not delete the store. The sweep mode removes only the
-`incremental/` directories, automatically, during handled builds.
+not delete the store. The sweep mode removes unpublished scratch copies
+during handled builds. It keeps `incremental/`, which holds the
+incremental state of path packages.
 
 ## Exit codes
 
@@ -105,13 +121,15 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | Mode | Fresh default | Effect |
 | --- | --- | --- |
 | enabled | on | Cache supported invocations; off sends shim commands directly to Cargo |
-| sweep | off | Remove Cargo incremental directories during handled builds |
+| sweep | off | Remove unpublished scratch copies during handled builds |
 | cranelift | off | Use Cranelift when rustc accepts it |
 | rmeta | on | Emit metadata-only artifacts for check where possible |
 | slim | off | Use line-table debug info and disable embedded bitcode |
 | linker | off | Probe for mold, wild, ld64.mold, or lld |
 | meta-cache | on | Cache Cargo metadata outside the workspace target directory |
-| threads | off | Use rustc parallel frontend threads when rustc accepts them |
+| threads | off | Use up to 8 rustc parallel frontend threads when rustc accepts them |
+| trust | on | Skip checks that only report errors in crates.io dependencies when rustc accepts `-Z trusted-crate` |
+| early | off | In `check` builds, start a crate's dependents once rustc writes its early metadata (item interfaces, before function bodies), when rustc accepts `-Z early-metadata` |
 | serve | off | Send handled builds to the local daemon and start it on demand. Not available on Windows |
 
 ## Environment variables
@@ -124,17 +142,18 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | ARTIFICER_NOSERVE | Force the in-process build path |
 | ARTIFICER_NO_TREE | Skip the per-invocation feature probe; every handled command falls back to Cargo |
 | ARTIFICER_STORE_CAP_GB | Store size limit in GiB. Unset, the cap is 15% of the volume (at least 8 GiB). A value above that share is clamped to it. |
+| ARTIFICER_REMOTE | Remote store for builds and `artificer pull`; overrides `artificer remote set`. Empty turns it off |
 | ARTIFICER_JOBS | Maximum Artificer compile workers in one process |
 | CARGO_BUILD_JOBS | Cargo's job cap; used when ARTIFICER_JOBS is unset |
 | ARTIFICER_CODEGEN=llvm or off | Disable automatic Cranelift selection when its mode is on |
 | ARTIFICER_LINKER=off or default | Disable automatic linker selection |
 | ARTIFICER_LINKER=PATH | Use an explicit linker when the linker mode is on |
 | ARTIFICER_THREADS=off | Disable rustc frontend threads when their mode is on |
-| ARTIFICER_TIMING | Print Artificer phase timings |
+| ARTIFICER_TIMING | Print Artificer phase timings to stderr; build profiles are recorded either way |
 | ARTIFICER_TRACE | Print rustc commands |
 | ARTIFICER_DEBUG_KEY=CRATE | Print key inputs for one crate |
 | ARTIFICER_DEBUG_SEL | Print feature-resolution selection |
-| ARTIFICER_PASSES | Set to any value to pass `-Ztime-passes` to rustc |
+| ARTIFICER_PASSES | Set to any value to record rustc pass timings in the build profile; runs rustc with `RUSTC_BOOTSTRAP=1` and `-Ztime-passes-format=json`, and does not change unit keys |
 | ARTIFICER_SHIM | Set to any value to stop the direct `artificer` binary from printing the fallback reason |
 
 Artificer honors RUSTC, RUSTFLAGS, CARGO_ENCODED_RUSTFLAGS, RUSTDOC,

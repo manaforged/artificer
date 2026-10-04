@@ -34,6 +34,21 @@ struct Doc {
     #[serde(default)]
     profile: BTreeMap<String, Profile>,
     workspace: Option<Workspace>,
+    lib: Option<TargetSpec>,
+    #[serde(default)]
+    bin: Vec<TargetSpec>,
+    #[serde(default)]
+    test: Vec<TargetSpec>,
+    #[serde(default)]
+    bench: Vec<TargetSpec>,
+    #[serde(default)]
+    example: Vec<TargetSpec>,
+}
+
+#[derive(Deserialize, Default)]
+struct TargetSpec {
+    name: Option<String>,
+    harness: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
@@ -110,6 +125,24 @@ fn read(path: &Path) -> Doc {
         .ok()
         .and_then(|body| toml::from_str(&body).ok())
         .unwrap_or_default()
+}
+
+pub(crate) fn harness(manifest: &Path, target: &crate::cargo::Target) -> bool {
+    use crate::cargo::TargetKind;
+    let doc = read(manifest);
+    let specs = match TargetKind::of(target) {
+        TargetKind::Lib => return doc.lib.and_then(|lib| lib.harness).unwrap_or(true),
+        TargetKind::BuildScript => return true,
+        TargetKind::Bin => doc.bin,
+        TargetKind::Test => doc.test,
+        TargetKind::Bench => doc.bench,
+        TargetKind::Example => doc.example,
+    };
+    specs
+        .into_iter()
+        .find(|spec| spec.name.as_deref() == Some(target.name.as_str()))
+        .and_then(|spec| spec.harness)
+        .unwrap_or(true)
 }
 
 pub(crate) fn package_root(manifest: &Path) -> PathBuf {
@@ -199,7 +232,7 @@ mod profile;
 pub use profile::{Overrides, overrides};
 
 mod profile_args;
-pub use profile_args::{profile, profile_gate};
+pub use profile_args::{UnitUse, profile, profile_gate};
 
 #[cfg(test)]
 use profile::decode_override;

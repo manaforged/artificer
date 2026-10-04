@@ -62,7 +62,7 @@ fn profile_gate_rejects_unknown_keys_and_walks_the_chain() {
 #[test]
 fn profile_applies_split_debuginfo_and_rpath() -> anyhow::Result<()> {
     let tmp = workspace("[profile.dev]\nsplit-debuginfo = \"packed\"\nrpath = true\n")?;
-    let args = profile(tmp.path(), "dev");
+    let args = profile(tmp.path(), "dev", UnitUse::Runtime);
     let pairs: Vec<&str> = args.iter().map(String::as_str).collect();
     assert!(
         pairs
@@ -100,12 +100,12 @@ fn lints_gate_rejects_an_unknown_level() {
 fn test_and_bench_inherit_their_implicit_parents() {
     let tmp = workspace("[profile.dev]\nopt-level = 1\n\n[profile.release]\nopt-level = 2\n")
         .expect("fixture");
-    let test = profile(tmp.path(), "test");
+    let test = profile(tmp.path(), "test", UnitUse::Runtime);
     assert!(
         test.windows(2).any(|w| w == ["-C", "opt-level=1"]),
         "{test:?}"
     );
-    let bench = profile(tmp.path(), "bench");
+    let bench = profile(tmp.path(), "bench", UnitUse::Runtime);
     assert!(
         bench.windows(2).any(|w| w == ["-C", "opt-level=2"]),
         "{bench:?}"
@@ -169,11 +169,11 @@ fn profile_booleans_map_to_rustc_values() -> anyhow::Result<()> {
     let tmp = workspace(
         "[profile.release]\nstrip = true\ndebug = true\nlto = false\n\n[profile.dev]\nstrip = false\nlto = true\ndebug = \"limited\"\n",
     )?;
-    let release = profile(tmp.path(), "release");
+    let release = profile(tmp.path(), "release", UnitUse::Runtime);
     assert!(release.contains(&"strip=symbols".to_string()));
     assert!(release.contains(&"debuginfo=2".to_string()));
     assert!(!release.iter().any(|a| a.starts_with("lto")));
-    let dev = profile(tmp.path(), "dev");
+    let dev = profile(tmp.path(), "dev", UnitUse::Runtime);
     assert!(dev.contains(&"strip=none".to_string()));
     assert!(dev.contains(&"lto=fat".to_string()));
     assert!(dev.contains(&"debuginfo=1".to_string()));
@@ -183,4 +183,29 @@ fn profile_booleans_map_to_rustc_values() -> anyhow::Result<()> {
         ["-C", "debuginfo=0", "-C", "strip=symbols"]
     );
     Ok(())
+}
+
+#[test]
+fn a_test_target_with_harness_false_reads_as_harness_free() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest = dir.path().join("Cargo.toml");
+    std::fs::write(
+        &manifest,
+        "[package]\nname = \"h\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[[test]]\nname = \"custom\"\nharness = false\n",
+    )
+    .unwrap();
+    let target = |name: &str, kind: &str| crate::cargo::Target {
+        name: name.to_string(),
+        kind: vec![kind.to_string()],
+        crate_types: vec!["bin".to_string()],
+        src_path: dir.path().join("tests/custom.rs"),
+        edition: "2021".to_string(),
+        required_features: Vec::new(),
+        test: true,
+        doc: false,
+        doctest: false,
+    };
+    assert!(!harness(&manifest, &target("custom", "test")));
+    assert!(harness(&manifest, &target("other", "test")));
+    assert!(harness(&manifest, &target("h", "lib")));
 }

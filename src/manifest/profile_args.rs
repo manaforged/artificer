@@ -21,10 +21,26 @@ pub(super) fn implicit_parent(name: &str) -> Option<&'static str> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnitUse {
+    Runtime,
+    BuildOnly,
+}
+
 #[must_use]
-pub fn profile(workspace_root: &Path, name: &str) -> Vec<String> {
+pub fn profile(workspace_root: &Path, name: &str, unit: UnitUse) -> Vec<String> {
     let doc = read(&workspace_root.join("Cargo.toml"));
-    let release = matches!(name, "release" | "bench");
+    let mut values = Values::defaults(matches!(name, "release" | "bench"));
+    for p in chain(&doc, name) {
+        values.apply(&p);
+    }
+    if unit == UnitUse::BuildOnly {
+        values.build_only();
+    }
+    values.args()
+}
+
+fn chain(doc: &Doc, name: &str) -> Vec<Profile> {
     let mut chain: Vec<Profile> = Vec::new();
     let mut cursor = Some(name.to_string());
     while let Some(key) = cursor.take() {
@@ -40,82 +56,99 @@ pub fn profile(workspace_root: &Path, name: &str) -> Vec<String> {
         }
     }
     chain.reverse();
+    chain
+}
 
-    let mut opt = if release {
-        "3".to_string()
-    } else {
-        "0".to_string()
-    };
-    let mut assertions = !release;
-    let mut overflow = !release;
-    let mut debuginfo = if release { "0" } else { "2" }.to_string();
-    let (mut lto, mut panic, mut units, mut strip) = (None, None, None, None);
-    let mut split_debuginfo = None;
-    let mut rpath = false;
+struct Values {
+    opt: String,
+    assertions: bool,
+    overflow: bool,
+    debuginfo: String,
+    lto: Option<String>,
+    panic: Option<String>,
+    units: Option<String>,
+    strip: Option<String>,
+    split_debuginfo: Option<String>,
+    rpath: bool,
+}
 
-    for p in chain {
+impl Values {
+    fn defaults(release: bool) -> Self {
+        Self {
+            opt: if release { "3" } else { "0" }.to_string(),
+            assertions: !release,
+            overflow: !release,
+            debuginfo: if release { "0" } else { "2" }.to_string(),
+            lto: None,
+            panic: None,
+            units: None,
+            strip: None,
+            split_debuginfo: None,
+            rpath: false,
+        }
+    }
+
+    fn apply(&mut self, p: &Profile) {
         if let Some(v) = p.opt_level.as_ref().and_then(scalar) {
-            opt = v;
+            self.opt = v;
         }
-        if let Some(v) = p.debug_assertions {
-            assertions = v;
-        }
-        if let Some(v) = p.overflow_checks {
-            overflow = v;
-        }
+        self.assertions = p.debug_assertions.unwrap_or(self.assertions);
+        self.overflow = p.overflow_checks.unwrap_or(self.overflow);
         if let Some(v) = p.debug.as_ref().and_then(scalar) {
-            debuginfo = rustc_value("debug", v).unwrap_or_default();
+            self.debuginfo = rustc_value("debug", v).unwrap_or_default();
         }
         if let Some(v) = p.lto.as_ref().and_then(scalar) {
-            lto = rustc_value("lto", v);
+            self.lto = rustc_value("lto", v);
         }
-        if let Some(v) = p.panic.clone() {
-            panic = Some(v);
-        }
-        if let Some(v) = p.codegen_units {
-            units = Some(v.to_string());
-        }
+        self.panic = p.panic.clone().or(self.panic.take());
+        self.units = p.codegen_units.map(|v| v.to_string()).or(self.units.take());
         if let Some(v) = p.strip.as_ref().and_then(scalar) {
-            strip = rustc_value("strip", v);
+            self.strip = rustc_value("strip", v);
         }
         if let Some(v) = p.split_debuginfo.as_ref().and_then(scalar) {
-            split_debuginfo = Some(v);
+            self.split_debuginfo = Some(v);
         }
-        if let Some(v) = p.rpath {
-            rpath = v;
-        }
+        self.rpath = p.rpath.unwrap_or(self.rpath);
     }
 
-    if split_debuginfo.is_none() && cfg!(target_os = "macos") && debuginfo != "0" {
-        split_debuginfo = Some("unpacked".to_string());
+    fn build_only(&mut self) {
+        self.opt = "0".to_string();
+        self.debuginfo = "0".to_string();
+        (self.lto, self.panic, self.units, self.split_debuginfo) = (None, None, None, None);
     }
-    let mut args = vec![
-        "-C".into(),
-        format!("opt-level={opt}"),
-        "-C".into(),
-        format!("debug-assertions={assertions}"),
-        "-C".into(),
-        format!("overflow-checks={overflow}"),
-        "-C".into(),
-        format!("debuginfo={debuginfo}"),
-    ];
-    for (flag, value) in [
-        ("lto", lto),
-        ("panic", panic),
-        ("codegen-units", units),
-        ("strip", strip),
-        ("split-debuginfo", split_debuginfo),
-    ] {
-        if let Some(v) = value {
-            args.push("-C".into());
-            args.push(format!("{flag}={v}"));
+
+    fn args(mut self) -> Vec<String> {
+        if self.split_debuginfo.is_none() && cfg!(target_os = "macos") && self.debuginfo != "0" {
+            self.split_debuginfo = Some("unpacked".to_string());
         }
+        let mut args = vec![
+            "-C".into(),
+            format!("opt-level={}", self.opt),
+            "-C".into(),
+            format!("debug-assertions={}", self.assertions),
+            "-C".into(),
+            format!("overflow-checks={}", self.overflow),
+            "-C".into(),
+            format!("debuginfo={}", self.debuginfo),
+        ];
+        for (flag, value) in [
+            ("lto", self.lto),
+            ("panic", self.panic),
+            ("codegen-units", self.units),
+            ("strip", self.strip),
+            ("split-debuginfo", self.split_debuginfo),
+        ] {
+            if let Some(v) = value {
+                args.push("-C".into());
+                args.push(format!("{flag}={v}"));
+            }
+        }
+        if self.rpath {
+            args.push("-C".into());
+            args.push("rpath".into());
+        }
+        args
     }
-    if rpath {
-        args.push("-C".into());
-        args.push("rpath".into());
-    }
-    args
 }
 
 const PROFILE_KEYS: [&str; 14] = [
@@ -135,15 +168,21 @@ const PROFILE_KEYS: [&str; 14] = [
     "build-override",
 ];
 
-pub fn profile_gate(workspace_root: &Path, name: &str) -> Result<(), String> {
+const INCREMENTAL_ROOT: &str = "dev";
+const INCREMENTAL_KEY: &str = "incremental";
+
+pub fn profile_gate(workspace_root: &Path, name: &str) -> Result<bool, String> {
     let body = cached_body(&workspace_root.join("Cargo.toml"))?;
     let doc: toml::Value =
         toml::from_str(&body).map_err(|e| format!("cannot parse the workspace manifest: {e}"))?;
     let mut cursor = Some(name.to_string());
+    let mut root = name.to_string();
+    let mut incremental = None;
     for _ in 0..8 {
         let Some(profile_name) = cursor.take() else {
             break;
         };
+        root.clone_from(&profile_name);
         if let Some(table) = doc
             .get("profile")
             .and_then(|p| p.get(&profile_name))
@@ -154,6 +193,9 @@ pub fn profile_gate(workspace_root: &Path, name: &str) -> Result<(), String> {
                     return Err(format!("[profile.{profile_name}.{key}] is not modeled"));
                 }
             }
+            if incremental.is_none() {
+                incremental = table.get(INCREMENTAL_KEY).and_then(toml::Value::as_bool);
+            }
             cursor = table
                 .get("inherits")
                 .and_then(toml::Value::as_str)
@@ -163,5 +205,5 @@ pub fn profile_gate(workspace_root: &Path, name: &str) -> Result<(), String> {
             cursor = implicit_parent(&profile_name).map(str::to_string);
         }
     }
-    Ok(())
+    Ok(incremental.unwrap_or(root == INCREMENTAL_ROOT))
 }

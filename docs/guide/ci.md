@@ -41,3 +41,29 @@ Each run saves the store under a new key. `restore-keys` restores the
 newest store saved for the same `Cargo.lock`, or for any lock file when
 none matches. The binary cache key does not change, so update it to
 install a newer Artificer.
+
+## Share units between machines
+
+A first build on a new machine or a fresh checkout can reuse units that
+another machine already compiled. Units only match on the same platform and
+toolchain, so pick one builder machine per platform. On every other machine
+of that platform, point Artificer at the builder's store:
+
+```sh
+artificer install --remote builder:/path/to/its/store
+```
+
+The location is `HOST:/ABSOLUTE/PATH`, reached over SSH, or an absolute
+directory such as a mounted share. The path is the builder's Artificer
+store, the directory `artificer stat` prints. Install records the remote and
+starts the first pull in the background. `artificer remote set LOCATION`
+changes it later, `artificer remote off` clears it, and `ARTIFICER_REMOTE`
+overrides it for one shell.
+
+`artificer pull` copies the complete units this store does not have. Over
+SSH it runs one `rsync`, so `rsync` and `ssh` must be installed and the
+host must accept key login without a prompt. On Windows, use a directory remote. After that, handled builds
+start a background pull when the last one is more than 15 minutes old and
+write its output to `pull.log` in the store. Builds never wait on the
+network. Pull only from machines you trust: stored artifacts are executable
+code.

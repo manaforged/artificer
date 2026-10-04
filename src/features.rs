@@ -1,5 +1,5 @@
 use crate::cargo::{Metadata, cargo_bin, package};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -19,6 +19,43 @@ pub fn feature_args(all: bool, features: &[String], no_default: bool) -> Vec<Str
     args
 }
 
+mod split;
+mod tree;
+
+pub use split::narrow;
+#[cfg(test)]
+use tree::{TreePkg, TreeSource};
+use tree::{parse_tree, resolve_ids};
+
+const TREE_TAG: &[u8] = b"tree-v4";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Side {
+    Normal,
+    Host,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Sides {
+    pub normal: Option<Vec<String>>,
+    pub host: Option<Vec<String>>,
+}
+
+impl Sides {
+    fn get_mut(&mut self, side: Side) -> &mut Option<Vec<String>> {
+        match side {
+            Side::Normal => &mut self.normal,
+            Side::Host => &mut self.host,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Selection {
+    feats: HashMap<String, Sides>,
+    split: HashSet<String>,
+}
+
 pub fn selected(
     manifest: &Path,
     roots: &[String],
@@ -26,7 +63,7 @@ pub fn selected(
     extra: &[&str],
     dev: bool,
     home: &Path,
-) -> Option<HashMap<(String, String), Vec<String>>> {
+) -> Option<Selection> {
     if std::env::var_os("ARTIFICER_NO_TREE").is_some() {
         dbg_sel("ARTIFICER_NO_TREE");
         return None;
@@ -34,7 +71,7 @@ pub fn selected(
     let names: Vec<String> = roots
         .iter()
         .filter_map(|id| package(meta, id).ok())
-        .map(|p| format!("{}@{}", p.name, p.version))
+        .map(|p| p.id.clone())
         .collect();
     if names.is_empty() {
         dbg_sel("no root names");
@@ -46,13 +83,14 @@ pub fn selected(
         "normal,build"
     };
     let text = tree_text(manifest, &names, meta, extra, all, home)?;
-    if !contexts_agree(&text) {
-        dbg_sel("a package resolves different features for build scripts and normal code");
-        return None;
-    }
-    let map = parse_tree(&text);
-    dbg_sel(&format!("resolved {} packages", map.len()));
-    Some(map)
+    let map = resolve_ids(meta, parse_tree(&text))?;
+    let sel = split::plan(meta, map)?;
+    dbg_sel(&format!(
+        "resolved {} packages, {} split for the host",
+        sel.feats.len(),
+        sel.split.len()
+    ));
+    Some(sel)
 }
 
 fn tree_text(
@@ -65,7 +103,7 @@ fn tree_text(
 ) -> Option<String> {
     let key = {
         let mut h = blake3::Hasher::new();
-        h.update(b"tree-v2");
+        h.update(TREE_TAG);
         h.update(kinds.as_bytes());
         for n in names {
             h.update(n.as_bytes());
@@ -111,7 +149,7 @@ fn tree_text(
                 crate::jobs::isolate(&mut cmd);
                 cmd.env("CARGO_TARGET_DIR", home.join("cargo-meta"));
                 cmd.args([
-                    "tree", "--color", "never", "--edges", kinds, "--prefix", "none",
+                    "tree", "--color", "never", "--edges", kinds, "--prefix", "indent",
                 ]);
                 cmd.arg("--format");
                 cmd.arg("{p}|{f}");
@@ -180,88 +218,10 @@ fn read_tree(path: &Path) -> Option<String> {
         .filter(|text| !parse_tree(text).is_empty())
 }
 
-fn contexts_agree(text: &str) -> bool {
-    let mut seen: HashMap<&str, std::collections::BTreeSet<&str>> = HashMap::new();
-    text.lines().all(|line| {
-        let Some((head, feats)) = line.split_once('|') else {
-            return true;
-        };
-        let feats = feats.trim_end();
-        let feats = feats.strip_suffix("(*)").map_or(feats, str::trim_end);
-        let head = head.split(" (").next().unwrap_or(head).trim();
-        let set = feats.split(',').filter(|f| !f.is_empty()).collect();
-        match seen.entry(head) {
-            std::collections::hash_map::Entry::Occupied(was) => *was.get() == set,
-            std::collections::hash_map::Entry::Vacant(slot) => {
-                slot.insert(set);
-                true
-            }
-        }
-    })
-}
-
-fn parse_tree(text: &str) -> HashMap<(String, String), Vec<String>> {
-    let mut map: HashMap<(String, String), Vec<String>> = HashMap::new();
-    for line in text.lines() {
-        let Some((head, feats)) = line.split_once('|') else {
-            continue;
-        };
-        let feats = feats.trim_end();
-        let feats = feats.strip_suffix("(*)").map_or(feats, str::trim_end);
-        let head = head.split(" (").next().unwrap_or(head).trim();
-        let Some((name, version)) = head.rsplit_once(" v") else {
-            continue;
-        };
-        let feats: Vec<String> = feats
-            .split(',')
-            .filter(|f| !f.is_empty())
-            .map(str::to_string)
-            .collect();
-        let slot = map
-            .entry((name.trim().to_string(), version.trim().to_string()))
-            .or_default();
-        for f in feats {
-            if !slot.contains(&f) {
-                slot.push(f);
-            }
-        }
-    }
-    map
-}
-
 fn dbg_sel(msg: &str) {
     if std::env::var_os("ARTIFICER_DEBUG_SEL").is_some() {
-        eprintln!("SEL {msg}");
+        crate::out::diag(format!("SEL {msg}"));
     }
-}
-
-pub fn narrow(meta: &mut Metadata, sel: &HashMap<(String, String), Vec<String>>) {
-    let keep: std::collections::HashSet<String> = meta
-        .packages
-        .iter()
-        .filter(|p| sel.contains_key(&(p.name.clone(), p.version.clone())))
-        .map(|p| p.id.clone())
-        .collect();
-    let feats: HashMap<String, Vec<String>> = meta
-        .packages
-        .iter()
-        .filter_map(|p| {
-            sel.get(&(p.name.clone(), p.version.clone()))
-                .map(|f| (p.id.clone(), f.clone()))
-        })
-        .collect();
-    let Some(resolve) = meta.resolve.as_mut() else {
-        return;
-    };
-    resolve.nodes.retain(|n| keep.contains(&n.id));
-    for node in &mut resolve.nodes {
-        if let Some(f) = feats.get(&node.id) {
-            node.features.clone_from(f);
-        }
-        node.deps.retain(|d| keep.contains(&d.pkg));
-    }
-    meta.node_ix = OnceLock::new();
-    meta.pkg_ix = OnceLock::new();
 }
 
 #[cfg(test)]

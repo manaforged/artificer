@@ -1,7 +1,12 @@
-use crate::manifest::scalar;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+mod env;
+mod merge;
+mod tools;
+pub use env::{EnvVar, effective_env};
+pub use tools::{TargetTool, ToolKind, resolve_host_tools};
 
 #[derive(Deserialize, Default)]
 struct ConfigDoc {
@@ -18,8 +23,8 @@ struct ConfigDoc {
 #[derive(Deserialize, Default)]
 struct TargetFlags {
     rustflags: Option<toml::Value>,
-    linker: Option<String>,
-    runner: Option<String>,
+    linker: Option<toml::Value>,
+    runner: Option<toml::Value>,
 }
 
 #[derive(Deserialize, Default)]
@@ -37,8 +42,10 @@ struct Build {
     rustc_workspace_wrapper: Option<String>,
 }
 
-const CONFIG_TABLES: [&str; 13] = [
+const CONFIG_TABLES: [&str; 15] = [
     "build",
+    "patch",
+    "resolver",
     "target",
     "profile",
     "env",
@@ -62,6 +69,8 @@ const BUILD_MODELED: [&str; 4] = [
 
 const BUILD_IGNORED: [&str; 3] = ["jobs", "incremental", "dep-info-basedir"];
 
+const RESOLVER_IGNORED: [&str; 1] = ["incompatible-rust-versions"];
+
 const BUILD_NAMED: [&str; 4] = ["rustc", "rustdoc", "rustdocflags", "target"];
 
 const TARGET_KEYS: [&str; 3] = ["rustflags", "linker", "runner"];
@@ -71,7 +80,8 @@ pub struct Config {
     pub rustflags: Vec<String>,
     pub target_dir: Option<std::path::PathBuf>,
     pub target_rustflags: Vec<(String, Vec<String>)>,
-    pub target_tools: Vec<(String, &'static str)>,
+    pub target_tools: Vec<TargetTool>,
+    pub env: Vec<EnvVar>,
     pub rustc_wrapper: Option<String>,
     pub rustc_workspace_wrapper: Option<String>,
     pub unmodeled: Vec<String>,
@@ -93,98 +103,33 @@ pub fn config(dir: &Path) -> Config {
         for name in names {
             push_once(&mut out.unmodeled, &name);
         }
-        if doc.profile.is_some() {
-            push_once(
-                &mut out.unmodeled,
-                &format!("[profile] in {}", path.display()),
-            );
+        let shown = path.display().to_string();
+        for (present, table) in [
+            (doc.profile.is_some(), "profile"),
+            (doc.unstable.is_some(), "unstable"),
+        ] {
+            if present {
+                push_once(&mut out.unmodeled, &format!("[{table}] in {shown}"));
+            }
         }
-        if doc.env.is_some() {
-            push_once(&mut out.unmodeled, &format!("[env] in {}", path.display()));
-        }
-        if doc.unstable.is_some() {
-            push_once(
-                &mut out.unmodeled,
-                &format!("[unstable] in {}", path.display()),
-            );
+        let root = path.parent().and_then(Path::parent).unwrap_or(dir);
+        if let Some(table) = &doc.env
+            && let Err(reason) = env::parse(table, root, &shown, &mut out.env)
+        {
+            push_once(&mut out.unmodeled, &reason);
         }
         if let Some(build) = doc.build {
-            if !out.rustflags.is_empty() && build.rustflags.is_some() {
-                push_once(
-                    &mut out.unmodeled,
-                    "rustflags merged across Cargo configuration files",
-                );
-            }
-            if out.rustflags.is_empty() {
-                out.rustflags = match build.rustflags {
-                    Some(toml::Value::String(s)) => {
-                        s.split_whitespace().map(str::to_string).collect()
-                    }
-                    Some(toml::Value::Array(items)) => items.iter().filter_map(scalar).collect(),
-                    _ => Vec::new(),
-                };
-            }
-            if out.target_dir.is_none() {
-                out.target_dir = build.target_dir.map(|value| {
-                    let base = path.parent().and_then(Path::parent).unwrap_or(dir);
-                    base.join(value)
-                });
-            }
-            if out.rustc_wrapper.is_none() {
-                out.rustc_wrapper = build
-                    .rustc_wrapper
-                    .map(|v| v.trim().to_string())
-                    .filter(|v| !v.is_empty() && v != "rustc");
-            }
-            if out.rustc_workspace_wrapper.is_none() {
-                out.rustc_workspace_wrapper = build
-                    .rustc_workspace_wrapper
-                    .map(|v| v.trim().to_string())
-                    .filter(|v| !v.is_empty() && v != "rustc");
-            }
-            if build.rustc.is_some() {
-                push_once(&mut out.unmodeled, "build.rustc");
-            }
-            if build.target.is_some() {
-                push_once(&mut out.unmodeled, "build.target");
-            }
-            if build.rustdoc.is_some() {
-                push_once(&mut out.unmodeled_doctest, "build.rustdoc");
-            }
-            if build.rustdocflags.is_some() {
-                push_once(&mut out.unmodeled_doctest, "build.rustdocflags");
-            }
+            merge::build(&mut out, build, root);
         }
-        for (matcher, t) in doc.target.unwrap_or_default() {
-            if t.linker.is_some() {
-                out.target_tools.push((matcher.clone(), "linker"));
-            }
-            if t.runner.is_some() {
-                out.target_tools.push((matcher.clone(), "runner"));
-            }
-            if out.target_rustflags.iter().any(|(m, _)| m == &matcher) {
-                if t.rustflags.is_some() {
-                    push_once(
-                        &mut out.unmodeled,
-                        "target rustflags merged across Cargo configuration files",
-                    );
-                }
-                continue;
-            }
-            let flags = match t.rustflags {
-                Some(toml::Value::String(s)) => s.split_whitespace().map(str::to_string).collect(),
-                Some(toml::Value::Array(items)) => items.iter().filter_map(scalar).collect(),
-                _ => Vec::new(),
-            };
-            out.target_rustflags.push((matcher, flags));
-        }
+        merge::targets(&mut out, doc.target.unwrap_or_default(), root, &shown);
     }
     out
 }
 
-pub(crate) fn target_dir(dir: &Path, workspace: &Path) -> PathBuf {
-    std::env::var_os("CARGO_TARGET_DIR")
-        .map(|path| dir.join(path))
+pub(crate) fn target_dir(explicit: Option<&Path>, dir: &Path, workspace: &Path) -> PathBuf {
+    explicit
+        .map(Path::to_path_buf)
+        .or_else(|| std::env::var_os("CARGO_TARGET_DIR").map(|path| dir.join(path)))
         .or_else(|| config(dir).target_dir)
         .unwrap_or_else(|| workspace.join("target"))
 }
@@ -236,6 +181,13 @@ fn read_config(path: &Path) -> Result<(ConfigDoc, Vec<String>), String> {
                     || BUILD_NAMED.contains(&key.as_str());
                 if !known {
                     unmodeled.push(format!("build.{key} in {shown}"));
+                }
+            }
+        }
+        if let Some(resolver) = table.get("resolver").and_then(toml::Value::as_table) {
+            for key in resolver.keys() {
+                if !RESOLVER_IGNORED.contains(&key.as_str()) {
+                    unmodeled.push(format!("resolver.{key} in {shown}"));
                 }
             }
         }
@@ -332,15 +284,10 @@ pub fn resolve_target_flags(
     host_triple: &str,
     rustc_print: &[String],
 ) -> Result<Option<Vec<String>>, String> {
-    if cfg.target_rustflags.is_empty() && cfg.target_tools.is_empty() {
+    if cfg.target_rustflags.is_empty() {
         return Ok(None);
     }
     let host = host_cfgs(rustc_print);
-    for (matcher, key) in &cfg.target_tools {
-        if target_applies(matcher, host_triple, &host)? {
-            return Err(format!("[target.{matcher}.{key}] is not modeled"));
-        }
-    }
     let mut matched: Vec<(String, Vec<String>)> = Vec::new();
     for (matcher, flags) in &cfg.target_rustflags {
         let hit = target_applies(matcher, host_triple, &host)?;

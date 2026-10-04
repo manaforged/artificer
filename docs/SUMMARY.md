@@ -7,6 +7,7 @@
 - [Cache model](guide/cache-model.md)
 - [CI](guide/ci.md)
 - [Measurements](guide/measurements.md)
+- [Profiling](guide/profiling.md)
 - [Reference](guide/reference.md)
 - [Architecture](guide/architecture.md)
 - [API reference](api.md)

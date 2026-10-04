@@ -12,23 +12,25 @@ pub fn run_cmd(
     if let Some(name) = example {
         return run_example(dir, packages, name, home, &opts, args);
     }
-    let (root, compiled, profile_dir) = check_graph(dir, packages, home, false, &opts)?;
+    let (root, compiled, settings) =
+        check_graph(dir, packages, home, false, &opts, &TargetSel::default())?;
     let c = compiled.get(&root).with_context(|| "no package to run")?;
     let name = match bin {
         Some(b) => artifact::bin_name(b),
         None => {
             let names: Vec<&str> = c.shipped.iter().map(|(n, _)| n.as_str()).collect();
-            match names.as_slice() {
-                [] => bail!("no bin target to run"),
-                [one] => (*one).to_string(),
-                many => bail!("several bin targets ({}); pass --bin", many.join(", ")),
+            match (names.as_slice(), c.default_run.as_deref()) {
+                ([], _) => bail!("no bin target to run"),
+                (_, Some(default)) => artifact::bin_name(default),
+                ([one], None) => (*one).to_string(),
+                (many, None) => bail!("several bin targets ({}); pass --bin", many.join(", ")),
             }
         }
     };
     if !c.shipped.iter().any(|(n, _)| *n == name) {
         bail!("no bin target `{name}`");
     }
-    execute(&profile_dir.join(name), args)
+    execute(&settings, &settings.profile_dir().join(name), args)
 }
 
 fn run_example(
@@ -47,7 +49,15 @@ fn run_example(
         opts.no_default,
         &opts.meta_flags,
     );
-    let plan = plan(dir, packages, home, &extra, false, true)?;
+    let plan = plan(
+        dir,
+        packages,
+        home,
+        &extra,
+        false,
+        true,
+        opts.target_dir.as_deref(),
+    )?;
     let (meta, roots) = (&plan.meta, &plan.roots);
     let root = roots.first().context("no package to run")?.clone();
     let order = cargo::test_closure_many(meta, roots)?;
@@ -60,8 +70,10 @@ fn run_example(
         profile,
         &meta.workspace_members,
         &meta.packages,
+        opts.target_dir.as_deref(),
     )?;
     sess.primary = roots.iter().cloned().collect();
+    sess.build_only = cargo::build_only(meta, roots, &order, true);
     let compiled = schedule::compile_ids(&sess, meta, &order)?;
     record_stats(home, &compiled, started, "run");
     let exe = compile::compile_example(&sess, meta, &root, name)?;
@@ -71,10 +83,10 @@ fn run_example(
         &artifact::bin_name(name),
     )?;
     finished(ws, profile, started);
-    execute(&exe, args)
+    execute(&sess.settings, &exe, args)
 }
 
-fn execute(exe: &Path, args: &[String]) -> Result<i32> {
+fn execute(settings: &Settings, exe: &Path, args: &[String]) -> Result<i32> {
     let cwd = std::env::current_dir().unwrap_or_default();
     let shown = exe.strip_prefix(&cwd).unwrap_or(exe);
     let mut line = shown.display().to_string();
@@ -83,9 +95,11 @@ fn execute(exe: &Path, args: &[String]) -> Result<i32> {
         line.push_str(arg);
     }
     crate::out::status(crate::out::Status::Running, format!("`{line}`"));
-    let status = std::process::Command::new(exe)
-        .args(args)
-        .status()
-        .with_context(|| format!("run {}", exe.display()))?;
+    let mut program = settings.exec_cmd(exe);
+    program.args(args);
+    let status = crate::profile::span(crate::profile::RunPhase::Run, || {
+        crate::profile::status(&mut program)
+    })
+    .with_context(|| format!("run {}", exe.display()))?;
     Ok(status.code().unwrap_or(1))
 }
