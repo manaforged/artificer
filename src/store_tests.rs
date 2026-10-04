@@ -53,6 +53,15 @@ fn hold_serializes() -> Result<()> {
     Ok(())
 }
 
+fn backdate(path: &Path) -> Result<()> {
+    let hour_ago = SystemTime::now() - Duration::from_secs(3600);
+    fs::File::options()
+        .write(true)
+        .open(path)?
+        .set_modified(hour_ago)?;
+    Ok(())
+}
+
 fn unit(home: &Path, name: &str) -> Result<PathBuf> {
     let dir = home.join("units").join(LAYOUT).join(name);
     fs::create_dir_all(dir.join("out"))?;
@@ -92,6 +101,7 @@ fn parallel_publish_never_collides() -> Result<()> {
 fn gc_evicts_old_unit() -> Result<()> {
     let tmp = tempfile::tempdir()?;
     let dir = unit(tmp.path(), "u-dead")?;
+    backdate(&dir.join("ok"))?;
     let (gone, bytes) = gc_units(tmp.path(), Duration::ZERO)?;
     assert_eq!(gone, 1);
     assert!(bytes >= 1);
@@ -103,6 +113,7 @@ fn gc_evicts_old_unit() -> Result<()> {
 fn gc_skips_held_unit() -> Result<()> {
     let tmp = tempfile::tempdir()?;
     let dir = unit(tmp.path(), "u-held")?;
+    backdate(&dir.join("ok"))?;
     let guard = hold(tmp.path(), "u-held")?;
     let (gone, _) = gc_units(tmp.path(), Duration::ZERO)?;
     assert_eq!(gone, 0);
@@ -154,6 +165,8 @@ fn gc_evicts_old_meta() -> Result<()> {
     fs::create_dir_all(&cache)?;
     fs::write(cache.join("k.json"), b"{}")?;
     fs::write(tmp.path().join("rustc-runs"), "ran\n")?;
+    backdate(&cache.join("k.json"))?;
+    backdate(&tmp.path().join("rustc-runs"))?;
     let (gone, bytes) = gc_units(tmp.path(), Duration::ZERO)?;
     assert_eq!(gone, 0, "no units, only cache");
     assert!(bytes >= 3);
