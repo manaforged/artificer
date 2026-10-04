@@ -96,13 +96,7 @@ fn record(action: &Action, job: &Job, recorded: &str, stamp: &str) -> Result<()>
     fs::write(dir.join(STAMP_FILE), stamp)?;
     action.finish()?;
     let settings = job.settings;
-    let stamp = input_stamp(
-        job.pkg,
-        &settings.home,
-        recorded,
-        &action.out,
-        &settings.workspace_root,
-    );
+    let stamp = input_stamp(job.pkg, settings, recorded, &action.out);
     fs::write(dir.join("script-inputs"), stamp)?;
     Ok(())
 }
@@ -118,13 +112,7 @@ fn restorable(action: &Action, job: &Job, rustc_cmd: &std::process::Command) -> 
     let recorded = fs::read_to_string(dir.join("output")).ok()?;
     let stamp = fs::read_to_string(dir.join("script-inputs")).ok()?;
     let settings = job.settings;
-    let current = input_stamp(
-        pkg,
-        &settings.home,
-        &recorded,
-        &action.out,
-        &settings.workspace_root,
-    );
+    let current = input_stamp(pkg, settings, &recorded, &action.out);
     (stamp == current).then_some(recorded)
 }
 

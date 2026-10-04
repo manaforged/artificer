@@ -24,6 +24,20 @@ impl core::cmp::PartialEq for artificer::Location
 impl core::fmt::Debug for artificer::Location
 impl core::fmt::Display for artificer::Location
 impl core::marker::StructuralPartialEq for artificer::Location
+pub enum artificer::Pick
+pub artificer::Pick::All
+pub artificer::Pick::Named(alloc::vec::Vec<alloc::string::String>)
+pub artificer::Pick::None
+impl artificer::Pick
+pub fn artificer::Pick::add(&mut self, name: &str)
+pub fn artificer::Pick::is_none(&self) -> bool
+pub fn artificer::Pick::names(&self) -> &[alloc::string::String]
+impl core::clone::Clone for artificer::Pick
+impl core::cmp::Eq for artificer::Pick
+impl core::cmp::PartialEq for artificer::Pick
+impl core::default::Default for artificer::Pick
+impl core::fmt::Debug for artificer::Pick
+impl core::marker::StructuralPartialEq for artificer::Pick
 pub enum artificer::RemoteSource
 pub artificer::RemoteSource::Config
 pub artificer::RemoteSource::Env
@@ -151,6 +165,28 @@ impl core::default::Default for artificer::SweepReport
 impl core::fmt::Debug for artificer::SweepReport
 impl core::marker::Copy for artificer::SweepReport
 impl core::marker::StructuralPartialEq for artificer::SweepReport
+pub struct artificer::TargetSel
+pub artificer::TargetSel::benches: artificer::Pick
+pub artificer::TargetSel::bins: artificer::Pick
+pub artificer::TargetSel::examples: artificer::Pick
+pub artificer::TargetSel::lib: bool
+pub artificer::TargetSel::tests: artificer::Pick
+impl artificer::TargetSel
+pub fn artificer::TargetSel::all_targets() -> Self
+pub fn artificer::TargetSel::from_targets(targets: artificer::Targets) -> Self
+pub fn artificer::TargetSel::is_default(&self) -> bool
+pub fn artificer::TargetSel::pick(&self, kind: artificer::build::select::Kind) -> &artificer::Pick
+pub fn artificer::TargetSel::targets(&self) -> core::option::Option<artificer::Targets>
+pub fn artificer::TargetSel::units<'a>(&self, pkg: &'a artificer::cargo::Package, features: &[alloc::string::String]) -> anyhow::Result<alloc::vec::Vec<(&'a artificer::cargo::Target, artificer::build::select::Kind, artificer::build::select::Mode)>>
+pub fn artificer::TargetSel::validate(&self, meta: &artificer::cargo::Metadata, roots: &[alloc::string::String]) -> anyhow::Result<()>
+pub fn artificer::TargetSel::wants_bin(&self, name: &str) -> bool
+pub fn artificer::TargetSel::wants_dev(&self) -> bool
+impl core::clone::Clone for artificer::TargetSel
+impl core::cmp::Eq for artificer::TargetSel
+impl core::cmp::PartialEq for artificer::TargetSel
+impl core::default::Default for artificer::TargetSel
+impl core::fmt::Debug for artificer::TargetSel
+impl core::marker::StructuralPartialEq for artificer::TargetSel
 pub struct artificer::Targets
 pub artificer::Targets::all: bool
 pub artificer::Targets::tests: bool
@@ -191,6 +227,7 @@ pub fn artificer::check(pkg: &std::path::Path, home: &std::path::Path) -> anyhow
 pub fn artificer::check_cmd(dir: &std::path::Path, packages: &[alloc::string::String], home: &std::path::Path, opts: artificer::CheckOpts) -> anyhow::Result<i32>
 pub fn artificer::check_package(dir: &std::path::Path, packages: &[alloc::string::String], home: &std::path::Path) -> anyhow::Result<artificer::Report>
 pub fn artificer::check_real_cargo(real_cargo: &std::path::Path, control: &std::path::Path) -> anyhow::Result<()>
+pub fn artificer::check_selected(dir: &std::path::Path, packages: &[alloc::string::String], home: &std::path::Path, opts: artificer::CheckOpts, sel: &artificer::TargetSel) -> anyhow::Result<i32>
 pub fn artificer::control_home() -> std::path::PathBuf
 pub fn artificer::default_home() -> std::path::PathBuf
 pub fn artificer::doctor(home: &std::path::Path) -> anyhow::Result<i32>

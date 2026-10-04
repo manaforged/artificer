@@ -82,11 +82,7 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
     if !opts.doc {
         let profile_dir = sess.settings.profile_dir();
         artifact::deliver(roots, &compiled, &profile_dir)?;
-        let deps = profile_dir.join("deps");
-        for (_, bin) in &mut bins {
-            let file = artifact::deps_name(&bin.exe, &bin.target.name.replace('-', "_"));
-            bin.exe = artifact::place_exe(&bin.exe, &deps, &file)?;
-        }
+        place_tests(bins.iter_mut().map(|(_, bin)| bin), &profile_dir)?;
     }
     let graph_hits = compiled
         .values()
@@ -217,7 +213,7 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
                     let mut run = match job {
                         Job::Bin { pkg, exe, label } => {
                             crate::out::status(crate::out::Status::Running, label);
-                            let mut run = std::process::Command::new(&exe);
+                            let mut run = sess.settings.exec_cmd(&exe);
                             run.current_dir(pkg.root());
                             cargo::set_package_env(&mut run, pkg);
                             run.args(&opts.args);
@@ -274,6 +270,18 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
     Ok(code
         .into_inner()
         .unwrap_or_else(std::sync::PoisonError::into_inner))
+}
+
+pub(super) fn place_tests<'b>(
+    bins: impl Iterator<Item = &'b mut compile::TestBin>,
+    profile_dir: &Path,
+) -> Result<()> {
+    let deps = profile_dir.join("deps");
+    for bin in bins {
+        let file = artifact::deps_name(&bin.exe, &bin.target.name.replace('-', "_"));
+        bin.exe = artifact::place_exe(&bin.exe, &deps, &file)?;
+    }
+    Ok(())
 }
 
 fn harness_label(pkg: &cargo::Package, bin: &compile::TestBin, ws: &Path) -> String {

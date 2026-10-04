@@ -241,14 +241,13 @@ pub fn compile_ids_and_extras(
     meta: &cargo::Metadata,
     ids: &[String],
     roots: &[String],
-    tests: bool,
-    all: bool,
+    sel: &crate::build::TargetSel,
 ) -> Result<HashMap<String, Compiled>> {
-    let (units, deps) = graph_and_extras(meta, ids, roots, tests || all)?;
+    let (units, deps) = graph_and_extras(meta, ids, roots, sel.wants_dev())?;
     sess.learn_links(meta);
     let done = run_units(units, deps, |unit| match unit {
         Unit::Pkg(id) => compile::compile_pkg(sess, meta, id),
-        Unit::Extra(id) => compile::check_extras(sess, meta, id, tests, all).map(|()| None),
+        Unit::Extra(id) => compile::check_extras(sess, meta, id, sel).map(|()| None),
     })?;
     let mut out = HashMap::new();
     for (unit, compiled) in done {

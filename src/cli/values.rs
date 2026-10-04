@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) const COMMANDS: [&str; 6] = ["check", "build", "test", "run", "clean", "warm"];
 pub(super) const DIRECT_ONLY: [&str; 2] = ["clean", "warm"];
-pub(super) const VALUED: [&str; 11] = [
+pub(super) const VALUED: [&str; 12] = [
     "--package",
     "--target-dir",
     "--bin",
@@ -12,47 +12,9 @@ pub(super) const VALUED: [&str; 11] = [
     "--jobs",
     "--features",
     "--test",
+    "--bench",
     "--message-format",
     "--color",
-];
-
-#[derive(Clone, Copy)]
-pub(super) enum Toggle {
-    NoRun,
-    Doc,
-    Lib,
-    Tests,
-    AllTargets,
-}
-
-const TEST_ONLY: &[&str] = &["test"];
-const CHECK_OR_BUILD: &[&str] = &["check", "build"];
-pub(super) const TOGGLES: [(&str, &[&str], Toggle, Option<&str>); 5] = [
-    (
-        "--no-run",
-        TEST_ONLY,
-        Toggle::NoRun,
-        Some("--no-run is not modeled for this command"),
-    ),
-    ("--doc", TEST_ONLY, Toggle::Doc, None),
-    (
-        "--lib",
-        TEST_ONLY,
-        Toggle::Lib,
-        Some("--lib target selection belongs to cargo"),
-    ),
-    (
-        "--tests",
-        CHECK_OR_BUILD,
-        Toggle::Tests,
-        Some("--tests is not modeled for this command"),
-    ),
-    (
-        "--all-targets",
-        CHECK_OR_BUILD,
-        Toggle::AllTargets,
-        Some("--all-targets is not modeled for this command"),
-    ),
 ];
 
 pub(super) fn value<'a>(args: &'a [String], i: &mut usize) -> Option<&'a str> {

@@ -10,12 +10,14 @@
 | [`ServeRequest`](#serverequest) | struct |  |
 | [`StoreStat`](#storestat) | struct |  |
 | [`SweepReport`](#sweepreport) | struct |  |
+| [`TargetSel`](#targetsel) | struct |  |
 | [`Targets`](#targets) | struct |  |
 | [`TestOpts`](#testopts) | struct |  |
 | [`TransferReport`](#transferreport) | struct |  |
 | [`Unmodeled`](#unmodeled) | struct |  |
 | [`ColorChoice`](#colorchoice) | enum |  |
 | [`Location`](#location) | enum |  |
+| [`Pick`](#pick) | enum |  |
 | [`RemoteSource`](#remotesource) | enum |  |
 | [`RustcOutcome`](#rustcoutcome) | enum |  |
 | [`ScriptOutcome`](#scriptoutcome) | enum |  |
@@ -26,6 +28,7 @@
 | [`check_cmd`](#check_cmd) | fn |  |
 | [`check_package`](#check_package) | fn |  |
 | [`check_real_cargo`](#check_real_cargo) | fn |  |
+| [`check_selected`](#check_selected) | fn |  |
 | [`control_home`](#control_home) | fn |  |
 | [`default_home`](#default_home) | fn |  |
 | [`doctor`](#doctor) | fn |  |
@@ -219,6 +222,35 @@
 **Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Default</code>, <code>Debug</code>, <code>Copy</code>, <code>StructuralPartialEq</code>
 
 
+### `TargetSel`
+
+**Methods**
+
+| Method | Description |
+| --- | --- |
+| <code>all_targets() -&gt; Self</code> |  |
+| <code>from_targets(targets: <a href="#targets">Targets</a>) -&gt; Self</code> |  |
+| <code>is_default(&amp;self) -&gt; bool</code> |  |
+| <code>pick(&amp;self, kind: build::select::Kind) -&gt; &amp;<a href="#pick">Pick</a></code> |  |
+| <code>targets(&amp;self) -&gt; Option&lt;<a href="#targets">Targets</a>&gt;</code> |  |
+| <code>units&lt;'a&gt;(&amp;self, pkg: &amp;'a cargo::Package, features: &amp;[String]) -&gt; Result&lt;Vec&lt;(&amp;'a cargo::Target, build::select::Kind, build::select::Mode)&gt;&gt;</code> |  |
+| <code>validate(&amp;self, meta: &amp;cargo::Metadata, roots: &amp;[String]) -&gt; Result&lt;()&gt;</code> |  |
+| <code>wants_bin(&amp;self, name: &amp;str) -&gt; bool</code> |  |
+| <code>wants_dev(&amp;self) -&gt; bool</code> |  |
+
+**Fields**
+
+| Field | Description |
+| --- | --- |
+| <code>benches: <a href="#pick">Pick</a></code> |  |
+| <code>bins: <a href="#pick">Pick</a></code> |  |
+| <code>examples: <a href="#pick">Pick</a></code> |  |
+| <code>lib: bool</code> |  |
+| <code>tests: <a href="#pick">Pick</a></code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Default</code>, <code>Debug</code>, <code>StructuralPartialEq</code>
+
+
 ### `Targets`
 
 **Fields**
@@ -315,6 +347,27 @@
 **Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Debug</code>, <code>Display</code>, <code>StructuralPartialEq</code>
 
 
+### `Pick`
+
+**Methods**
+
+| Method | Description |
+| --- | --- |
+| <code>add(&amp;mut self, name: &amp;str)</code> |  |
+| <code>is_none(&amp;self) -&gt; bool</code> |  |
+| <code>names(&amp;self) -&gt; &amp;[String]</code> |  |
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>All</code> |  |
+| <code>Named(Vec&lt;String&gt;)</code> |  |
+| <code>None</code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Default</code>, <code>Debug</code>, <code>StructuralPartialEq</code>
+
+
 ### `RemoteSource`
 
 **Variants**
@@ -387,6 +440,11 @@
 ### `check_real_cargo`
 
 <pre>pub fn <a href="#check_real_cargo">check_real_cargo</a>(real_cargo: &amp;Path, control: &amp;Path) -&gt; Result&lt;()&gt;</pre>
+
+
+### `check_selected`
+
+<pre>pub fn <a href="#check_selected">check_selected</a>(dir: &amp;Path, packages: &amp;[String], home: &amp;Path, opts: <a href="#checkopts">CheckOpts</a>, sel: &amp;<a href="#targetsel">TargetSel</a>) -&gt; Result&lt;i32&gt;</pre>
 
 
 ### `control_home`

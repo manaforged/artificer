@@ -237,13 +237,13 @@ fn build(args: &[String]) -> Result<Dispatch> {
         return clean(&dir, a.target_dir.as_deref(), &home);
     }
     let mut req = request(&a, sub, dir);
-    if let Some(reason) = artificer::passthrough_reason(&req, dev(&a, sub, &req), &home)? {
+    if let Some(reason) = artificer::passthrough_reason(&req, dev(&a, sub), &home)? {
         return Ok(fallback(reason));
     }
     let code = match sub {
         help::Sub::Run => run_target(&a, &req, &home),
         help::Sub::Test => test(&mut req, &home),
-        _ => check(&mut req, &home),
+        _ => check(&mut req, &a.select, &home),
     }?;
     Ok(code.into())
 }
@@ -266,120 +266,14 @@ fn declined(home: &Path) -> Result<Option<Dispatch>> {
     Ok(None)
 }
 
-fn request(a: &cli::BuildArgs, sub: help::Sub, dir: PathBuf) -> artificer::ServeRequest {
-    let warm = sub == help::Sub::Warm;
-    artificer::ServeRequest {
-        token: String::new(),
-        op: a.cmd.clone(),
-        dir,
-        packages: a.packages.clone(),
-        json: a.json,
-        workspace: a.workspace || warm,
-        all_features: a.all_features,
-        features: a.features.clone(),
-        no_default: a.no_default,
-        meta_flags: a.meta_flags.clone(),
-        target_dir: a.target_dir.clone(),
-        release: a.release,
-        link: sub == help::Sub::Build,
-        no_run: a.no_run,
-        lib: a.lib_only,
-        doc: a.doc_only,
-        only: a.only.clone(),
-        tests: a.tests,
-        all_targets: a.all_targets,
-        args: a.pass.clone(),
-    }
-}
-
-fn dev(a: &cli::BuildArgs, sub: help::Sub, req: &artificer::ServeRequest) -> bool {
-    match sub {
-        help::Sub::Test => true,
-        help::Sub::Run => a.example.is_some(),
-        _ => req.tests || req.all_targets,
-    }
-}
-
-fn run_target(a: &cli::BuildArgs, req: &artificer::ServeRequest, home: &Path) -> Result<ExitCode> {
-    let code = artificer::run_cmd(
-        &req.dir,
-        &req.packages,
-        a.bin.as_deref(),
-        a.example.as_deref(),
-        home,
-        artificer::CheckOpts {
-            all_features: req.all_features,
-            features: req.features.clone(),
-            no_default: req.no_default,
-            meta_flags: req.meta_flags.clone(),
-            target_dir: req.target_dir.clone(),
-            release: req.release,
-            ..Default::default()
-        },
-        &req.args,
-    )?;
-    Ok(child_exit(code))
-}
-
-fn test(req: &mut artificer::ServeRequest, home: &Path) -> Result<ExitCode> {
-    if let Some(code) = artificer::serve_try(home, req) {
-        return Ok(child_exit(code?));
-    }
-    let code = artificer::test_package(
-        &req.dir,
-        &req.packages,
-        home,
-        &artificer::TestOpts {
-            no_run: req.no_run,
-            json: req.json,
-            workspace: req.workspace,
-            all_features: req.all_features,
-            features: req.features.clone(),
-            no_default: req.no_default,
-            meta_flags: req.meta_flags.clone(),
-            target_dir: req.target_dir.clone(),
-            release: req.release,
-            lib: req.lib,
-            doc: req.doc,
-            only: req.only.clone(),
-            args: req.args.clone(),
-        },
-    )?;
-    Ok(child_exit(code))
-}
-
-fn check(req: &mut artificer::ServeRequest, home: &Path) -> Result<ExitCode> {
-    if let Some(code) = artificer::serve_try(home, req) {
-        return Ok(child_exit(code?));
-    }
-    let code = artificer::check_cmd(
-        &req.dir,
-        &req.packages,
-        home,
-        artificer::CheckOpts {
-            json: req.json,
-            workspace: req.workspace,
-            all_features: req.all_features,
-            features: req.features.clone(),
-            no_default: req.no_default,
-            meta_flags: req.meta_flags.clone(),
-            target_dir: req.target_dir.clone(),
-            release: req.release,
-            link: req.link,
-            targets: artificer::Targets {
-                tests: req.tests,
-                all: req.all_targets,
-            },
-        },
-    )?;
-    Ok(child_exit(code))
-}
-
 #[path = "main/clean.rs"]
 mod clean;
 #[path = "main/commands.rs"]
 mod commands;
+#[path = "main/dispatch.rs"]
+mod dispatch;
 use clean::clean;
+use dispatch::{check, dev, request, run_target, test};
 #[path = "main/help.rs"]
 mod help;
 #[path = "main/remote.rs"]

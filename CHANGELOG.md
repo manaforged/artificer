@@ -85,6 +85,12 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 - Build-script units no longer depend on the machine's CPU count, the
   Cargo home path, or paths inside compiled objects in `OUT_DIR`, so they
   hit on other machines and in moved checkouts.
+- `check` and `build` accept `--lib`, `--bin`, `--bins`, `--example`,
+  `--examples`, `--test`, and `--tests`, and `check` also `--bench` and
+  `--all-targets`, through the cache. `test` accepts `--no-fail-fast`.
+- `[env]` and `[patch]` in Cargo configuration, and a `linker` or `runner`
+  for the host target, now build through the cache. `[env]` values reach
+  rustc, build scripts, rustdoc, tests, and `run`, and are part of the key.
 
 ## 0.1.1 - 2026-09-26
 

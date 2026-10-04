@@ -116,7 +116,10 @@ fn config_reason(doctest: bool, pkg_dir: &Path, home: &Path) -> Result<Option<St
     let print = key::rustc_print_cfg(home, pkg_dir)?;
     let version = key::rustc_version_in(home, pkg_dir)?;
     let host = key::rustc_host(&version)?;
-    Ok(config::resolve_target_flags(&cfg, &host, &print).err())
+    if let Err(reason) = config::resolve_target_flags(&cfg, &host, &print) {
+        return Ok(Some(reason));
+    }
+    Ok(config::resolve_host_tools(&cfg.target_tools, &host, &print).err())
 }
 
 fn modeled<T>(result: Result<T>) -> Result<std::result::Result<T, String>> {

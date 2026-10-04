@@ -51,15 +51,28 @@ const PACKAGE: &[Opt] = &[
 ];
 const WORKSPACE: &[Opt] = &[("--workspace", "Build every workspace member")];
 const TARGETS: &[Opt] = &[
-    ("--tests", "Also compile test targets"),
-    ("--all-targets", "Compile every target"),
+    ("--lib", "Only the library"),
+    ("--bin <NAME>", "Only the named binary (repeatable)"),
+    ("--bins", "All binaries"),
+    ("--example <NAME>", "Only the named example (repeatable)"),
+    ("--examples", "All examples"),
+    (
+        "--test <NAME>",
+        "Only the named integration test (repeatable)",
+    ),
+    ("--tests", "All targets with `test = true`"),
     ("--message-format <FMT>", "Diagnostic format"),
+];
+const CHECK_TARGETS: &[Opt] = &[
+    ("--bench <NAME>", "Only the named benchmark (repeatable)"),
+    ("--all-targets", "Every target"),
 ];
 const TEST: &[Opt] = &[
     ("--no-run", "Compile, but do not run the tests"),
     ("--lib", "Test only the library"),
     ("--doc", "Run only doctests"),
     ("--test <NAME>", "Run only the named integration test"),
+    ("--no-fail-fast", "Run every test binary after a failure"),
     ("--message-format <FMT>", "Diagnostic format"),
     ("-- <ARGS>", "Arguments for the test harness"),
 ];
@@ -82,7 +95,7 @@ const ENTRIES: [Entry; 21] = [
         name: "check",
         summary: "Check a package or workspace",
         usage: "artificer check [OPTIONS] [DIR]",
-        options: &[PACKAGE, WORKSPACE, TARGETS, GLOBAL],
+        options: &[PACKAGE, WORKSPACE, TARGETS, CHECK_TARGETS, GLOBAL],
     },
     Entry {
         sub: Sub::Build,

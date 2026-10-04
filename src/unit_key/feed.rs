@@ -34,19 +34,7 @@ pub(super) fn feed_inputs(
     target_tmpdir: bool,
     feed: Feed<'_>,
 ) -> Fed {
-    key.feed_str(&sess.settings.rustc);
-    key.feed_str(&key::rustc_bin());
-    key.feed_str(&key::explicit_rustc_identity().unwrap_or_default());
-    for a in &sess.settings.codegen {
-        key.feed(a.as_bytes());
-    }
-    for w in sess.settings.wrapper_chain(pkg) {
-        key.feed(w.as_bytes());
-    }
-    let clippy = clippy(sess, pkg);
-    if let Some(lint) = &clippy {
-        key.feed_str(lint);
-    }
+    let clippy = feed_toolchain(key, sess, pkg);
     key.feed_str(kind);
     let mut types = types.to_vec();
     types.sort();
@@ -67,30 +55,83 @@ pub(super) fn feed_inputs(
     key.feed_list(invoke::check_cfg_args(pkg));
     key.feed(&[u8::from(sess.settings.mods.slim)]);
     key.feed(&[u8::from(sess.settings.release)]);
-    key.feed_list(&sess.settings.linker);
+    key.feed_list(
+        sess.settings
+            .linker
+            .iter()
+            .map(|a| crate::inputs::portable(&sess.settings.home, a)),
+    );
+    let mut env = sess.settings.portable_env();
+    env.sort();
+    key.feed_list(&env);
     key.feed_list(&sess.settings.threads);
     let mut feats = features.to_vec();
     feats.sort();
     key.feed_list(&feats);
     let dev_deps = kind.starts_with("test-") || kind.starts_with("example-");
+    feed_source(key, sess, pkg, feed, dev_deps, target_tmpdir);
+    let dep_trace = feed_deps(key, sess, node, dev_deps, feed);
+    Fed {
+        types,
+        feats,
+        clippy,
+        dev_deps,
+        dep_trace,
+    }
+}
+
+fn feed_toolchain(key: &mut Key, sess: &Session, pkg: &Package) -> Option<String> {
+    key.feed_str(&sess.settings.rustc);
+    key.feed_str(&key::rustc_bin());
+    key.feed_str(&key::explicit_rustc_identity().unwrap_or_default());
+    for a in &sess.settings.codegen {
+        key.feed(a.as_bytes());
+    }
+    for w in sess.settings.wrapper_chain(pkg) {
+        key.feed(w.as_bytes());
+    }
+    let clippy = clippy(sess, pkg);
+    if let Some(lint) = &clippy {
+        key.feed_str(lint);
+    }
+    clippy
+}
+
+fn feed_source(
+    key: &mut Key,
+    sess: &Session,
+    pkg: &Package,
+    feed: Feed<'_>,
+    dev_deps: bool,
+    target_tmpdir: bool,
+) {
     if from_registry(pkg) {
         key.feed_str(&pkg.id);
-    } else {
-        if let Feed::Unit {
-            content: Some(base),
-        } = feed
-        {
-            key.feed_str(base);
-        }
-        for name in sess.env_names(pkg, dev_deps).iter() {
-            key.feed_str(name);
-            let value = compile_env(sess, pkg, name, target_tmpdir);
-            key.feed(&[u8::from(value.is_some())]);
-            if let Some(value) = value {
-                key.feed(value.as_bytes());
-            }
+        return;
+    }
+    if let Feed::Unit {
+        content: Some(base),
+    } = feed
+    {
+        key.feed_str(base);
+    }
+    for name in sess.env_names(pkg, dev_deps).iter() {
+        key.feed_str(name);
+        let value = compile_env(sess, pkg, name, target_tmpdir);
+        key.feed(&[u8::from(value.is_some())]);
+        if let Some(value) = value {
+            key.feed(value.as_bytes());
         }
     }
+}
+
+fn feed_deps(
+    key: &mut Key,
+    sess: &Session,
+    node: &cargo::Node,
+    dev_deps: bool,
+    feed: Feed<'_>,
+) -> Vec<String> {
     let mut deps: Vec<_> = node
         .deps
         .iter()
@@ -118,11 +159,5 @@ pub(super) fn feed_inputs(
         }
         dep_trace.push(format!("dep: {id}=>{artifact}"));
     }
-    Fed {
-        types,
-        feats,
-        clippy,
-        dev_deps,
-        dep_trace,
-    }
+    dep_trace
 }

@@ -12,7 +12,8 @@ pub fn run_cmd(
     if let Some(name) = example {
         return run_example(dir, packages, name, home, &opts, args);
     }
-    let (root, compiled, profile_dir) = check_graph(dir, packages, home, false, &opts)?;
+    let (root, compiled, settings) =
+        check_graph(dir, packages, home, false, &opts, &TargetSel::default())?;
     let c = compiled.get(&root).with_context(|| "no package to run")?;
     let name = match bin {
         Some(b) => artifact::bin_name(b),
@@ -28,7 +29,7 @@ pub fn run_cmd(
     if !c.shipped.iter().any(|(n, _)| *n == name) {
         bail!("no bin target `{name}`");
     }
-    execute(&profile_dir.join(name), args)
+    execute(&settings, &settings.profile_dir().join(name), args)
 }
 
 fn run_example(
@@ -80,10 +81,10 @@ fn run_example(
         &artifact::bin_name(name),
     )?;
     finished(ws, profile, started);
-    execute(&exe, args)
+    execute(&sess.settings, &exe, args)
 }
 
-fn execute(exe: &Path, args: &[String]) -> Result<i32> {
+fn execute(settings: &Settings, exe: &Path, args: &[String]) -> Result<i32> {
     let cwd = std::env::current_dir().unwrap_or_default();
     let shown = exe.strip_prefix(&cwd).unwrap_or(exe);
     let mut line = shown.display().to_string();
@@ -92,7 +93,8 @@ fn execute(exe: &Path, args: &[String]) -> Result<i32> {
         line.push_str(arg);
     }
     crate::out::status(crate::out::Status::Running, format!("`{line}`"));
-    let status = std::process::Command::new(exe)
+    let status = settings
+        .exec_cmd(exe)
         .args(args)
         .status()
         .with_context(|| format!("run {}", exe.display()))?;

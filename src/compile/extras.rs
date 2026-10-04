@@ -1,17 +1,35 @@
 use super::*;
+use crate::build::{Kind, Mode, TargetSel};
 
 pub fn check_extras(
     sess: &Session,
     meta: &cargo::Metadata,
     id: &str,
-    tests: bool,
-    all: bool,
+    sel: &TargetSel,
 ) -> Result<()> {
     let pkg = cargo::package(meta, id)?;
     let node = cargo::node(meta, id)?;
     let feats = &node.features;
-    let bin_exe: Vec<(String, PathBuf)> = pkg
-        .targets
+    let bin_exe = bin_exes(sess, pkg, feats);
+    let has_lib = pkg.lib_target().is_some();
+    let main = pkg
+        .bin_target()
+        .filter(|_| !has_lib)
+        .map(|t| t.name.as_str());
+    for (t, kind, mode) in sel.units(pkg, feats)? {
+        let Some((scan, self_extern, with_exe)) =
+            scan_for(kind, mode, main == Some(t.name.as_str()), has_lib)
+        else {
+            continue;
+        };
+        let exe: &[(String, PathBuf)] = if with_exe { &bin_exe } else { &[] };
+        check_one(sess, pkg, node, t, scan, self_extern, exe)?;
+    }
+    Ok(())
+}
+
+fn bin_exes(sess: &Session, pkg: &Package, feats: &[String]) -> Vec<(String, PathBuf)> {
+    pkg.targets
         .iter()
         .filter(|t| t.kind.iter().any(|k| k == "bin") && Package::covered(t, feats))
         .map(|t| {
@@ -22,57 +40,20 @@ pub fn check_extras(
                     .join(artifact::bin_name(&t.name)),
             )
         })
-        .collect();
-    let skip = usize::from(pkg.lib_target().is_none());
-    let self_extern = pkg.lib_target().is_some();
-    for t in pkg
-        .targets
-        .iter()
-        .filter(|t| t.kind.iter().any(|k| k == "bin"))
-        .skip(skip)
-    {
-        if Package::covered(t, feats) {
-            check_one(sess, pkg, node, t, Scan::Bin, self_extern, &[])?;
-        }
+        .collect()
+}
+
+fn scan_for(kind: Kind, mode: Mode, main_bin: bool, has_lib: bool) -> Option<(Scan, bool, bool)> {
+    match (kind, mode) {
+        (Kind::Lib, Mode::Normal) => None,
+        (Kind::Bin, Mode::Normal) if main_bin => None,
+        (Kind::Bin, Mode::Normal) => Some((Scan::Bin, has_lib, false)),
+        (Kind::Example, Mode::Normal) => Some((Scan::Example, has_lib, true)),
+        (Kind::Lib, Mode::Test) => Some((Scan::Test, false, true)),
+        (Kind::Bin, Mode::Test) => Some((Scan::BinTest, has_lib, true)),
+        (_, Mode::Test) => Some((Scan::Test, has_lib, true)),
+        (_, Mode::Normal) => None,
     }
-    if tests || all {
-        if let Some(lib) = pkg.lib_target()
-            && !pkg.is_proc_macro()
-            && lib.test
-        {
-            check_one(sess, pkg, node, lib, Scan::Test, false, &bin_exe)?;
-        }
-        for t in pkg
-            .targets
-            .iter()
-            .filter(|t| t.kind.iter().any(|k| k == "test"))
-        {
-            if Package::covered(t, feats) {
-                check_one(sess, pkg, node, t, Scan::Test, true, &bin_exe)?;
-            }
-        }
-    }
-    if all {
-        for t in pkg
-            .targets
-            .iter()
-            .filter(|t| t.kind.iter().any(|k| k == "example"))
-        {
-            if Package::covered(t, feats) {
-                check_one(sess, pkg, node, t, Scan::Example, true, &bin_exe)?;
-            }
-        }
-        for t in pkg
-            .targets
-            .iter()
-            .filter(|t| t.kind.iter().any(|k| k == "bench"))
-        {
-            if Package::covered(t, feats) {
-                check_one(sess, pkg, node, t, Scan::Test, true, &bin_exe)?;
-            }
-        }
-    }
-    Ok(())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -80,6 +61,7 @@ enum Scan {
     Bin,
     Example,
     Test,
+    BinTest,
 }
 
 impl Scan {
@@ -88,12 +70,33 @@ impl Scan {
             Scan::Bin => "scan-",
             Scan::Example => "example-scan-",
             Scan::Test => "test-scan-",
+            Scan::BinTest => "test-scan-bin-",
         }
     }
 
     fn dev_deps(self) -> bool {
         self != Scan::Bin
     }
+
+    fn harness(self) -> bool {
+        matches!(self, Scan::Test | Scan::BinTest)
+    }
+
+    fn extern_set(self) -> invoke::ExternSet {
+        if self.dev_deps() {
+            invoke::ExternSet::Test
+        } else {
+            invoke::ExternSet::Lib
+        }
+    }
+}
+
+struct ScanUnit<'u> {
+    pkg: &'u Package,
+    node: &'u cargo::Node,
+    target: &'u cargo::Target,
+    scan: Scan,
+    self_extern: bool,
 }
 
 fn check_one(
@@ -105,10 +108,16 @@ fn check_one(
     self_extern: bool,
     bin_exe: &[(String, PathBuf)],
 ) -> Result<()> {
+    let unit = ScanUnit {
+        pkg,
+        node,
+        target,
+        scan,
+        self_extern,
+    };
     let crate_name = target.name.replace('-', "_");
     let target_tmpdir = invoke::uses_target_tmpdir(target);
-    let prefix = scan.prefix();
-    let kind = format!("{prefix}{crate_name}");
+    let kind = format!("{}{crate_name}", scan.prefix());
     let script = ensure_script(sess, pkg, node)?;
     let stamp = script.as_ref().map(|s| s.stamp.clone());
     let keyed = unit_key::unit_digest(
@@ -122,56 +131,63 @@ fn check_one(
         stamp.as_deref(),
         target_tmpdir,
     )?;
-    let digest = keyed.digest;
-    let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &digest)?
+    let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &keyed.digest)?
         .lineage(keyed.lineage);
-    let slot = &action.slot;
-    let out = action.out.clone();
     let mut cmd = sess.settings.rustc_cmd(pkg);
     cmd.arg("--emit=dep-info,metadata");
-    if scan == Scan::Test {
+    if scan.harness() {
         cmd.arg("--test");
     }
     cmd.envs(bin_exe.iter().map(|(name, path)| (name, path)));
     invoke::set_target_tmpdir(&mut cmd, sess, target_tmpdir);
-    let mut cmd = invoke::rustc_base(
+    let cmd = invoke::rustc_base(
         cmd,
         sess,
         pkg,
         target,
         false,
         &node.features,
-        &out,
+        &action.out,
         script.as_ref(),
         false,
     );
-    invoke::add_externs(
-        &mut cmd,
-        sess,
-        node,
-        if scan.dev_deps() {
-            invoke::ExternSet::Test
-        } else {
-            invoke::ExternSet::Lib
-        },
-        true,
-    )?;
-    invoke::add_natives(&mut cmd, sess, &pkg.id, true);
-    if self_extern && let Some(art) = sess.get(&pkg.id) {
-        let path = art.rmeta.as_ref().unwrap_or(&art.path);
-        cmd.arg("--extern")
-            .arg(format!("{}={}", art.crate_name, path.display()));
-    }
-    cmd.arg(&target.src_path);
-    invoke::primary_env(&mut cmd, sess, pkg);
+    let cmd = scan_args(sess, &unit, cmd)?;
     let manifest = unit_key::dep_manifest(
         sess,
         node,
         scan.dev_deps(),
         self_extern.then_some(pkg.id.as_str()),
     )?;
+    settle(sess, &unit, action, cmd, &manifest)
+}
+
+fn scan_args(sess: &Session, unit: &ScanUnit, mut cmd: Command) -> Result<Command> {
+    let pkg = unit.pkg;
+    invoke::add_externs(&mut cmd, sess, unit.node, unit.scan.extern_set(), true)?;
+    invoke::add_natives(&mut cmd, sess, &pkg.id, true);
+    if unit.self_extern
+        && let Some(art) = sess.get(&pkg.id)
+    {
+        let path = art.rmeta.as_ref().unwrap_or(&art.path);
+        cmd.arg("--extern")
+            .arg(format!("{}={}", art.crate_name, path.display()));
+    }
+    cmd.arg(&unit.target.src_path);
+    invoke::primary_env(&mut cmd, sess, pkg);
+    Ok(cmd)
+}
+
+fn settle(
+    sess: &Session,
+    unit: &ScanUnit,
+    action: action::Action,
+    mut cmd: Command,
+    manifest: &str,
+) -> Result<()> {
+    let (pkg, target) = (unit.pkg, unit.target);
+    let slot = &action.slot;
     if slot.hit() {
-        if unit_key::deps_match(&slot.out_dir(), &manifest)
+        if unit_key::deps_match(&slot.out_dir(), manifest)
             && crate::inputs::matches(&sess.settings.home, &slot.out_dir(), pkg.root(), &cmd)
         {
             sess.retain(action.lease()?);
@@ -180,11 +196,12 @@ fn check_one(
         }
         action.invalidate()?;
     }
+    let out = action.out.clone();
     action.prepare()?;
     std::fs::create_dir_all(&out)?;
     invoke::note_rustc(&sess.settings.home);
     invoke::run_rustc(&mut cmd, sess, pkg, target, &out)?;
-    std::fs::write(out.join(unit_key::DEPS_FILE), &manifest)?;
+    std::fs::write(out.join(unit_key::DEPS_FILE), manifest)?;
     action.finish()?;
     sess.retain(action.lease()?);
     Ok(())
@@ -209,6 +226,7 @@ pub fn doctest_cmd(
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| "rustdoc".to_string());
     let mut cmd = Command::new(rustdoc);
+    sess.settings.apply_env(&mut cmd);
     cmd.current_dir(&sess.settings.toolchain_dir);
     cmd.arg("--test")
         .arg(&lib.src_path)

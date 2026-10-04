@@ -33,8 +33,17 @@ pub(super) fn ship_outputs(
         if !Package::covered(t, &node.features) {
             continue;
         }
+        let first = is_bin && i == 0;
+        if !first
+            && sess
+                .select
+                .as_ref()
+                .is_some_and(|sel| !sel.wants_bin(&t.name))
+        {
+            continue;
+        }
         let name = artifact::bin_name(&t.name);
-        if is_bin && i == 0 {
+        if first {
             v.push((name, art.path.clone()));
         } else {
             v.push((name, compile_bin(sess, pkg, node, t)?));

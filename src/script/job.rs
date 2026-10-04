@@ -41,6 +41,13 @@ impl Job<'_> {
         for flag in &settings.rustflags {
             key.feed_str(flag);
         }
+        key.feed_list(
+            settings
+                .host_linker
+                .iter()
+                .map(|a| portable(&settings.home, a)),
+        );
+        feed_sorted(&mut key, settings.portable_env());
         feed_sorted(
             &mut key,
             self.dep_env
@@ -111,6 +118,7 @@ impl Job<'_> {
         cmd.arg(bin_dir);
         cmd.arg("--emit=dep-info,link");
         cmd.args(&settings.rustflags);
+        cmd.args(&settings.host_linker);
         cmd.env("CARGO_CRATE_NAME", "build_script_build");
         crate::cargo::set_package_env(&mut cmd, pkg);
         for feat in self.features {
@@ -161,6 +169,7 @@ impl Job<'_> {
         let (pkg, settings) = (self.pkg, self.settings);
         let host = &settings.host;
         let mut ran = Command::new(bin);
+        settings.apply_env(&mut ran);
         ran.env("OUT_DIR", env_path(out_dir))
             .env("HOST", host)
             .env("TARGET", host)

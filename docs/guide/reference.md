@@ -30,9 +30,13 @@ The supported build commands accept the applicable subset of:
 - --release and the dev or release profile names;
 - --message-format=human, =json, and =json-render-diagnostics;
 - -j/--jobs N, -q/--quiet, -v/--verbose, and --color auto|always|never;
-- --tests and --all-targets for check;
-- --bin and --example for run;
-- --no-run, --lib, --doc, and --test for test;
+- --lib, --bin NAME, --bins, --example NAME, --examples, --test NAME, and
+  --tests for check and build, with the same target selection as Cargo;
+- --bench NAME and --all-targets for check;
+- one --bin or one --example for run;
+- --no-run, --lib, --doc, --test, and --no-fail-fast for test. The test
+  runner runs every test binary and doc test, then exits with failure if
+  any failed;
 - a run argument tail;
 - one test filter and test-harness arguments after --.
 
@@ -42,7 +46,12 @@ input. Fallback cases include:
 - `--target` and target-specific environment rustflags;
 - bench and doc commands;
 - custom profiles;
-- build target selection outside run;
+- --benches, --bench and --all-targets on build, and target name patterns;
+- `--message-format short`;
+- a build that selects only some binaries of a package, or skips a
+  library's cdylib, dylib, or staticlib output;
+- JSON messages for a target selection other than the default, --tests, or
+  --all-targets;
 - Cargo aliases;
 - --keep-going, and a --color value outside auto, always, and never;
 - `[profile.*]` keys Artificer does not apply, unknown lint levels, and

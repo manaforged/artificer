@@ -89,7 +89,8 @@ fn config_names_unmodeled_settings_and_reads_wrappers() -> anyhow::Result<()> {
     );
     assert!(
         cfg.target_tools
-            .contains(&("aarch64-apple-darwin".to_string(), "linker")),
+            .iter()
+            .any(|t| t.matcher == "aarch64-apple-darwin" && t.kind == ToolKind::Linker),
         "{:?}",
         cfg.target_tools
     );
@@ -104,18 +105,34 @@ fn config_names_unmodeled_settings_and_reads_wrappers() -> anyhow::Result<()> {
 }
 
 #[test]
-fn env_table_is_unmodeled() -> anyhow::Result<()> {
+fn env_table_is_read_with_force_and_relative_paths() -> anyhow::Result<()> {
     let tmp = tempfile::tempdir()?;
     std::fs::create_dir_all(tmp.path().join(".cargo"))?;
     std::fs::write(
         tmp.path().join(".cargo/config.toml"),
-        "[env]\nFOO = \"bar\"\n",
+        "[env]\nFOO = \"bar\"\nDATA = { value = \"assets\", relative = true, force = true }\n",
     )?;
     let cfg = config(tmp.path());
+    assert!(cfg.unmodeled.is_empty(), "{:?}", cfg.unmodeled);
+    let foo = cfg.env.iter().find(|v| v.name == "FOO").expect("FOO");
+    assert_eq!((foo.value.as_str(), foo.force), ("bar", false));
+    let data = cfg.env.iter().find(|v| v.name == "DATA").expect("DATA");
+    assert_eq!(
+        std::path::Path::new(&data.value),
+        tmp.path().join("assets").as_path()
+    );
+    assert!(data.force);
+
+    std::fs::write(
+        tmp.path().join(".cargo/config.toml"),
+        "[env]\nCARGO_HOME = \"/elsewhere\"\n",
+    )?;
     assert!(
-        cfg.unmodeled.iter().any(|r| r.contains("[env]")),
-        "{:?}",
-        cfg.unmodeled
+        config(tmp.path())
+            .unmodeled
+            .iter()
+            .any(|r| r.contains("CARGO_HOME")),
+        "Cargo refuses CARGO_HOME in [env]"
     );
     Ok(())
 }
@@ -197,18 +214,20 @@ fn unknown_config_surfaces_are_unmodeled() -> anyhow::Result<()> {
 
 #[test]
 fn a_linker_for_another_target_does_not_block_the_host() {
-    let cfg = Config {
-        target_tools: vec![
-            ("aarch64-unknown-linux-musl".to_string(), "linker"),
-            ("cfg(target_os = \"none\")".to_string(), "runner"),
-        ],
-        ..Default::default()
+    let tool = |matcher: &str, kind: ToolKind, program: &str| TargetTool {
+        matcher: matcher.to_string(),
+        kind,
+        command: vec![program.to_string()],
+        listed: false,
     };
+    let tools = vec![
+        tool("aarch64-unknown-linux-musl", ToolKind::Linker, "musl-gcc"),
+        tool("cfg(target_os = \"none\")", ToolKind::Runner, "qemu"),
+    ];
     let print = ["target_os=\"linux\"".to_string()];
-    assert_eq!(
-        resolve_target_flags(&cfg, "x86_64-unknown-linux-gnu", &print),
-        Ok(None)
-    );
-    let err = resolve_target_flags(&cfg, "aarch64-unknown-linux-musl", &print).unwrap_err();
-    assert!(err.contains("linker"), "{err}");
+    let host = resolve_host_tools(&tools, "x86_64-unknown-linux-gnu", &print).unwrap();
+    assert_eq!(host.linker, None);
+    assert_eq!(host.runner, None);
+    let musl = resolve_host_tools(&tools, "aarch64-unknown-linux-musl", &print).unwrap();
+    assert_eq!(musl.linker.as_deref(), Some("musl-gcc"));
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::settings::Settings;
 
 fn directive<'a>(line: &'a str, name: &str) -> Option<&'a str> {
     line.strip_prefix("cargo::")
@@ -37,13 +38,13 @@ pub fn metadata(output: &str) -> Vec<(String, String)> {
 
 pub(super) fn input_stamp(
     pkg: &Package,
-    home: &Path,
+    settings: &Settings,
     output: &str,
     out_dir: &Path,
-    workspace_root: &Path,
 ) -> String {
+    let home = settings.home.as_path();
     let mut key = Key::new();
-    let roots = [pkg.root(), workspace_root];
+    let roots = [pkg.root(), settings.workspace_root.as_path()];
     let spellings: Vec<Vec<String>> = roots
         .iter()
         .map(|root| {
@@ -90,7 +91,7 @@ pub(super) fn input_stamp(
         }
         if let Some(name) = directive(line, "rerun-if-env-changed=") {
             key.feed_str(name);
-            let value = std::env::var_os(name);
+            let value = settings.env_value(name);
             key.feed(&[u8::from(value.is_some())]);
             if let Some(value) = value {
                 key.feed(value.as_encoded_bytes());

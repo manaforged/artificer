@@ -17,7 +17,10 @@ fn compile_env(sess: &Session, pkg: &Package, name: &str, target_tmpdir: bool) -
             .flatten()
             .map(|path| path.display().to_string()),
         "OUT_DIR" => None,
-        _ => std::env::var(name).ok(),
+        _ => sess
+            .settings
+            .env_value(name)
+            .and_then(|value| value.into_string().ok()),
     }
 }
 

@@ -16,6 +16,15 @@ Two worktrees of the same code at different paths produce the same unit.
 Workspace members are cached the same way as dependencies, and
 proc-macros are cached like any other crate.
 
+Cargo configuration that changes a compile is part of the key. Variables
+from `[env]` (with `force` and `relative`) are set for rustc and build
+scripts and keyed with workspace and store paths replaced by
+placeholders. A `linker` from `[target.<host>]` or a matching
+`[target.cfg(..)]` is passed to rustc as `-C linker` and keyed. A `runner`
+does not change compiled output and is not keyed. `[patch]` changes only
+dependency resolution, which Artificer reads from Cargo, so the patched
+source is already part of each package identity.
+
 A build script runs once per key. Its `OUT_DIR` is stored with the unit,
 and `rerun-if-changed` and `rerun-if-env-changed` are honored.
 

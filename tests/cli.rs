@@ -167,3 +167,6 @@ mod sharing;
 
 #[path = "cli/remote.rs"]
 mod remote;
+
+#[path = "cli/coverage.rs"]
+mod coverage;
