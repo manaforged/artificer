@@ -149,11 +149,11 @@ stable. Report bugs and request features in
 
 <!-- truesight:surface -->
 
-192 public items (19 types, 52 functions, 18 methods, 85 fields, 15 variants, 3 constants) at 192 paths; 0 are re-export aliases. 76 trait impl lines, 5 inherent impl lines. 1 module, 0 re-export only.
+223 public items (23 types, 57 functions, 19 methods, 95 fields, 26 variants, 3 constants) at 223 paths; 0 are re-export aliases. 99 trait impl lines, 6 inherent impl lines. 1 module, 0 re-export only.
 
 | Module | Items | Types | Functions | Methods | Aliases |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `artificer` | 192 | 19 | 52 | 18 | 0 |
+| `artificer` | 223 | 23 | 57 | 19 | 0 |
 
 <!-- /truesight -->
 

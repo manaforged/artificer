@@ -5,6 +5,7 @@
 | [`CheckOpts`](#checkopts) | struct |  |
 | [`InstallReport`](#installreport) | struct |  |
 | [`Mods`](#mods) | struct |  |
+| [`ProfileRecording`](#profilerecording) | struct |  |
 | [`Report`](#report) | struct |  |
 | [`Reported`](#reported) | struct |  |
 | [`ServeRequest`](#serverequest) | struct |  |
@@ -17,11 +18,15 @@
 | [`Unmodeled`](#unmodeled) | struct |  |
 | [`ColorChoice`](#colorchoice) | enum |  |
 | [`Location`](#location) | enum |  |
+| [`Phase`](#phase) | enum |  |
 | [`Pick`](#pick) | enum |  |
+| [`ProfileCommand`](#profilecommand) | enum |  |
 | [`RemoteSource`](#remotesource) | enum |  |
+| [`RunPhase`](#runphase) | enum |  |
 | [`RustcOutcome`](#rustcoutcome) | enum |  |
 | [`ScriptOutcome`](#scriptoutcome) | enum |  |
 | [`add_to_profiles`](#add_to_profiles) | fn |  |
+| [`begin_profile`](#begin_profile) | fn |  |
 | [`cargo_home`](#cargo_home) | fn |  |
 | [`cargo_package`](#cargo_package) | fn |  |
 | [`check`](#check) | fn |  |
@@ -45,15 +50,19 @@
 | [`passthrough_reason`](#passthrough_reason) | fn |  |
 | [`path_prepend`](#path_prepend) | fn |  |
 | [`path_remove`](#path_remove) | fn |  |
+| [`profile_command`](#profile_command) | fn |  |
 | [`profile_line`](#profile_line) | fn |  |
+| [`profile_span`](#profile_span) | fn |  |
 | [`profiles`](#profiles) | fn |  |
 | [`pull`](#pull) | fn |  |
 | [`purge`](#purge) | fn |  |
+| [`raise_open_file_limit`](#raise_open_file_limit) | fn |  |
 | [`ready`](#ready) | fn |  |
 | [`refresh_shim`](#refresh_shim) | fn |  |
 | [`remote`](#remote) | fn |  |
 | [`remove_from_profiles`](#remove_from_profiles) | fn |  |
 | [`report_error`](#report_error) | fn |  |
+| [`request_timings`](#request_timings) | fn |  |
 | [`run_cmd`](#run_cmd) | fn |  |
 | [`save_mods`](#save_mods) | fn |  |
 | [`serve_listen`](#serve_listen) | fn |  |
@@ -138,6 +147,15 @@
 **Trait implementations:** <code>Clone</code>, <code>Default</code>, <code>Debug</code>, <code>Serialize</code>, <code>Deserialize&lt;'de&gt;</code>
 
 
+### `ProfileRecording`
+
+**Methods**
+
+| Method | Description |
+| --- | --- |
+| <code>finish(self, home: &amp;Path, failed: bool)</code> |  |
+
+
 ### `Report`
 
 **Fields**
@@ -177,6 +195,7 @@
 | <code>only: Vec&lt;String&gt;</code> |  |
 | <code>op: String</code> |  |
 | <code>packages: Vec&lt;String&gt;</code> |  |
+| <code>profile: Option&lt;String&gt;</code> |  |
 | <code>release: bool</code> |  |
 | <code>target_dir: Option&lt;PathBuf&gt;</code> |  |
 | <code>tests: bool</code> |  |
@@ -347,6 +366,21 @@
 **Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Debug</code>, <code>Display</code>, <code>StructuralPartialEq</code>
 
 
+### `Phase`
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>Process(profile::phase::ProcessPhase)</code> |  |
+| <code>Run(<a href="#runphase">RunPhase</a>)</code> |  |
+| <code>Setup(profile::phase::SetupPhase)</code> |  |
+| <code>Unit(profile::phase::UnitPhase)</code> |  |
+| <code>Wrapper(profile::phase::WrapperPhase)</code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>Ord</code>, <code>PartialEq</code>, <code>PartialOrd</code>, <code>From&lt;<a href="#runphase">RunPhase</a>&gt;</code>, <code>Debug</code>, <code>Hash</code>, <code>Copy</code>, <code>StructuralPartialEq</code>, <code>Serialize</code>, <code>Deserialize&lt;'de&gt;</code>
+
+
 ### `Pick`
 
 **Methods**
@@ -368,6 +402,31 @@
 **Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Default</code>, <code>Debug</code>, <code>StructuralPartialEq</code>
 
 
+### `ProfileCommand`
+
+**Fields**
+
+| Field | Description |
+| --- | --- |
+| <code>Diff::base: String</code> |  |
+| <code>Diff::head: String</code> |  |
+| <code>Diff::json: bool</code> |  |
+| <code>List::json: bool</code> |  |
+| <code>List::limit: usize</code> |  |
+| <code>Show::html: Option&lt;PathBuf&gt;</code> |  |
+| <code>Show::id: Option&lt;String&gt;</code> |  |
+| <code>Show::json: bool</code> |  |
+| <code>Show::trace: Option&lt;PathBuf&gt;</code> |  |
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>Diff</code> |  |
+| <code>List</code> |  |
+| <code>Show</code> |  |
+
+
 ### `RemoteSource`
 
 **Variants**
@@ -378,6 +437,19 @@
 | <code>Env</code> |  |
 
 **Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>PartialEq</code>, <code>Debug</code>, <code>Copy</code>, <code>StructuralPartialEq</code>
+
+
+### `RunPhase`
+
+**Variants**
+
+| Variant | Description |
+| --- | --- |
+| <code>Fallback</code> |  |
+| <code>Run</code> |  |
+| <code>TestRun</code> |  |
+
+**Trait implementations:** <code>Clone</code>, <code>Eq</code>, <code>Ord</code>, <code>PartialEq</code>, <code>PartialOrd</code>, <code>Debug</code>, <code>Hash</code>, <code>Copy</code>, <code>StructuralPartialEq</code>, <code>Serialize</code>, <code>Deserialize&lt;'de&gt;</code>
 
 
 ### `RustcOutcome`
@@ -410,6 +482,11 @@
 ### `add_to_profiles`
 
 <pre>pub fn <a href="#add_to_profiles">add_to_profiles</a>(files: &amp;[PathBuf], line: &amp;str, control: &amp;Path) -&gt; Result&lt;Vec&lt;PathBuf&gt;&gt;</pre>
+
+
+### `begin_profile`
+
+<pre>pub fn <a href="#begin_profile">begin_profile</a>(command: &amp;[String], dir: &amp;Path) -&gt; <a href="#profilerecording">ProfileRecording</a></pre>
 
 
 ### `cargo_home`
@@ -527,9 +604,19 @@
 <pre>pub fn <a href="#path_remove">path_remove</a>(path: &amp;str, dir: &amp;str) -&gt; Option&lt;String&gt;</pre>
 
 
+### `profile_command`
+
+<pre>pub fn <a href="#profile_command">profile_command</a>(home: &amp;Path, command: &amp;<a href="#profilecommand">ProfileCommand</a>) -&gt; Result&lt;String&gt;</pre>
+
+
 ### `profile_line`
 
 <pre>pub fn <a href="#profile_line">profile_line</a>(home: &amp;Path, control: &amp;Path) -&gt; String</pre>
+
+
+### `profile_span`
+
+<pre>pub fn <a href="#profile_span">profile_span</a>&lt;T&gt;(phase: impl Into&lt;<a href="#phase">Phase</a>&gt;, work: impl FnOnce() -&gt; T) -&gt; T</pre>
 
 
 ### `profiles`
@@ -545,6 +632,11 @@
 ### `purge`
 
 <pre>pub fn <a href="#purge">purge</a>(home: &amp;Path) -&gt; Result&lt;bool&gt;</pre>
+
+
+### `raise_open_file_limit`
+
+<pre>pub fn <a href="#raise_open_file_limit">raise_open_file_limit</a>() -&gt; Result&lt;()&gt;</pre>
 
 
 ### `ready`
@@ -570,6 +662,11 @@
 ### `report_error`
 
 <pre>pub fn <a href="#report_error">report_error</a>(message: impl Display)</pre>
+
+
+### `request_timings`
+
+<pre>pub fn <a href="#request_timings">request_timings</a>()</pre>
 
 
 ### `run_cmd`
