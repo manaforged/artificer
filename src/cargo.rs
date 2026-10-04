@@ -65,6 +65,8 @@ pub struct Package {
     pub manifest_path: PathBuf,
     pub targets: Vec<Target>,
     #[serde(default)]
+    pub default_run: Option<String>,
+    #[serde(default)]
     pub links: Option<String>,
     #[serde(default, rename = "features")]
     pub declared: std::collections::BTreeMap<String, Vec<String>>,

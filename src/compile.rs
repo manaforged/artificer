@@ -29,6 +29,7 @@ pub struct Compiled {
     pub rustc: RustcOutcome,
     pub script: ScriptOutcome,
     pub shipped: Vec<(String, PathBuf)>,
+    pub default_run: Option<String>,
 }
 
 pub(crate) fn waits_for_link(sess: &Session, pkg: &Package) -> bool {
@@ -89,6 +90,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
         rustc,
         script: script_outcome(script.as_ref()),
         shipped,
+        default_run: pkg.default_run.clone(),
     }))
 }
 

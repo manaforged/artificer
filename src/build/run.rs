@@ -19,10 +19,11 @@ pub fn run_cmd(
         Some(b) => artifact::bin_name(b),
         None => {
             let names: Vec<&str> = c.shipped.iter().map(|(n, _)| n.as_str()).collect();
-            match names.as_slice() {
-                [] => bail!("no bin target to run"),
-                [one] => (*one).to_string(),
-                many => bail!("several bin targets ({}); pass --bin", many.join(", ")),
+            match (names.as_slice(), c.default_run.as_deref()) {
+                ([], _) => bail!("no bin target to run"),
+                (_, Some(default)) => artifact::bin_name(default),
+                ([one], None) => (*one).to_string(),
+                (many, None) => bail!("several bin targets ({}); pass --bin", many.join(", ")),
             }
         }
     };

@@ -206,6 +206,7 @@ fn reroot_refuses_a_graph_with_external_path_deps() -> Result<()> {
         source: None,
         manifest_path,
         targets: Vec::new(),
+        default_run: None,
         links: None,
         declared: std::collections::BTreeMap::new(),
     };
