@@ -132,6 +132,7 @@ pub artificer::InstallReport::env: std::path::PathBuf
 pub artificer::InstallReport::shim: std::path::PathBuf
 pub struct artificer::Mods
 pub artificer::Mods::cranelift: bool
+pub artificer::Mods::early: bool
 pub artificer::Mods::enabled: bool
 pub artificer::Mods::linker: bool
 pub artificer::Mods::meta_cache: bool

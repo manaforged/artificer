@@ -33,6 +33,9 @@ pub(crate) fn style(sess: &Session, cmd: &mut Command, link: bool, pkg: &Package
     for a in crate::unit_key::trusted_args(sess, pkg) {
         cmd.arg(a);
     }
+    for a in crate::unit_key::early_args(sess) {
+        cmd.arg(a);
+    }
     if settings.mods.slim {
         cmd.arg("-C").arg("split-debuginfo=off");
     }
@@ -155,6 +158,21 @@ pub(crate) enum ExternSet {
     Test,
 }
 
+pub(crate) const EARLY_DIR: &str = "early";
+
+pub(crate) fn early_rmeta(art: &Artifact) -> Option<PathBuf> {
+    let name = art.path.with_extension("rmeta");
+    let file = art.path.parent()?.join(EARLY_DIR).join(name.file_name()?);
+    file.is_file().then_some(file)
+}
+
+pub(crate) fn meta_file(art: &Artifact, early: bool) -> PathBuf {
+    early
+        .then(|| early_rmeta(art))
+        .flatten()
+        .unwrap_or_else(|| art.rmeta.clone().unwrap_or_else(|| art.path.clone()))
+}
+
 pub(crate) fn add_externs(
     cmd: &mut Command,
     sess: &Session,
@@ -169,8 +187,14 @@ pub(crate) fn add_externs(
     let mut dirs: Vec<&Path> = arts.values().filter_map(|a| a.path.parent()).collect();
     dirs.sort_unstable();
     dirs.dedup();
+    let early = crate::unit_key::early_consumer(sess, &node.id);
     for dir in dirs {
         cmd.arg("-L").arg(format!("dependency={}", dir.display()));
+        let early_dir = dir.join(EARLY_DIR);
+        if early && early_dir.is_dir() {
+            cmd.arg("-L")
+                .arg(format!("dependency={}", early_dir.display()));
+        }
     }
     for d in &node.deps {
         let ok = match set {
@@ -183,9 +207,10 @@ pub(crate) fn add_externs(
         let Some(art) = arts.get(&d.pkg) else {
             bail!("missing artifact for {}", d.pkg);
         };
-        let path = match (prefer_meta, &art.rmeta) {
-            (true, Some(rmeta)) => rmeta,
-            _ => &art.path,
+        let path = if prefer_meta {
+            meta_file(art, early)
+        } else {
+            art.path.clone()
         };
         cmd.arg("--extern")
             .arg(format!("{}={}", d.name, path.display()));
@@ -242,3 +267,7 @@ pub(crate) fn set_target_tmpdir(cmd: &mut Command, sess: &Session, enabled: bool
 
 mod diagnostics;
 pub(crate) use diagnostics::{Early, note_rustc, primary_env, replay, run_rustc};
+
+#[cfg(test)]
+#[path = "invoke_tests.rs"]
+mod tests;

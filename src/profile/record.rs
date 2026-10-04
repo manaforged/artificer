@@ -213,8 +213,9 @@ pub(crate) struct MetaMark {
 
 impl MetaMark {
     pub(crate) fn mark(&self) {
-        self.recorder
-            .mark(self.unit, |unit, now| unit.meta_us = Some(now));
+        self.recorder.mark(self.unit, |unit, now| {
+            unit.meta_us.get_or_insert(now);
+        });
     }
 }
 

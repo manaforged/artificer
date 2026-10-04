@@ -69,6 +69,10 @@ pub(super) fn feed_inputs(
     if !trusted.is_empty() {
         key.feed_list(trusted);
     }
+    let early = super::early_args(sess);
+    if !early.is_empty() {
+        key.feed_list(early);
+    }
     let mut feats = features.to_vec();
     feats.sort();
     key.feed_list(&feats);

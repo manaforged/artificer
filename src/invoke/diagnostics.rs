@@ -1,5 +1,6 @@
 use super::*;
 use crate::cargo::TargetKind;
+use crate::schedule::MetaStage;
 
 pub(crate) const DIAGNOSTICS: &str = "diagnostics";
 const ABORTING: &str = "aborting due to";
@@ -49,6 +50,7 @@ fn source_prefix(sess: &Session, pkg: &Package) -> String {
 
 pub(crate) struct Early {
     pub(crate) rmeta: PathBuf,
+    pub(crate) early_rmeta: PathBuf,
     pub(crate) artifact: Artifact,
 }
 
@@ -60,13 +62,25 @@ struct Notice {
 
 const ARTIFACT_NOTICE: &[u8] = b"{\"$message_type\":\"artifact\"";
 const METADATA_EMIT: &str = "metadata";
+const EARLY_METADATA_EMIT: &str = "early-metadata";
 
-fn metadata_notice(line: &[u8]) -> Option<Option<PathBuf>> {
+#[derive(Debug, PartialEq)]
+enum Emitted {
+    Metadata(PathBuf),
+    EarlyMetadata(PathBuf),
+    Other,
+}
+
+fn artifact_notice(line: &[u8]) -> Option<Emitted> {
     if !line.starts_with(ARTIFACT_NOTICE) {
         return None;
     }
     let notice: Notice = serde_json::from_slice(line).ok()?;
-    Some((notice.emit == METADATA_EMIT).then_some(notice.artifact))
+    Some(match notice.emit.as_str() {
+        METADATA_EMIT => Emitted::Metadata(notice.artifact),
+        EARLY_METADATA_EMIT => Emitted::EarlyMetadata(notice.artifact),
+        _ => Emitted::Other,
+    })
 }
 
 fn stream(
@@ -80,16 +94,23 @@ fn stream(
     let signal = early.and_then(|_| crate::schedule::signal());
     let mut writer = std::io::BufWriter::new(file);
     let status = crate::profile::status_lines(cmd, |line| {
-        let Some(notice) = metadata_notice(line) else {
+        let Some(notice) = artifact_notice(line) else {
             writer.write_all(line)?;
             return writer.write_all(b"\n");
         };
-        if let (Some(early), Some(emitted)) = (early, notice)
-            && emitted.file_name() == early.rmeta.file_name()
-        {
+        let ready = early.and_then(|early| match notice {
+            Emitted::Metadata(path) if path.file_name() == early.rmeta.file_name() => {
+                Some((early, MetaStage::Full))
+            }
+            Emitted::EarlyMetadata(path) if path.file_name() == early.early_rmeta.file_name() => {
+                Some((early, MetaStage::Early))
+            }
+            _ => None,
+        });
+        if let Some((early, stage)) = ready {
             sess.put(pkg.id.clone(), early.artifact.clone());
             if let Some(signal) = &signal {
-                signal.metadata_ready();
+                signal.metadata_ready(stage);
             }
         }
         Ok(())
@@ -325,3 +346,7 @@ pub(crate) fn note_rustc(home: &Path) {
         drop(writeln!(f, "ran"));
     }
 }
+
+#[cfg(test)]
+#[path = "diagnostics_tests.rs"]
+mod tests;

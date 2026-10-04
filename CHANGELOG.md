@@ -9,6 +9,14 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- A new `early` mode, off by default, starts a crate's dependents in
+  `check` builds as soon as rustc writes its early metadata: the item
+  interfaces, before function bodies are checked. It needs a rustc that
+  accepts `-Z early-metadata`; with stock rustc nothing changes.
+- `check` builds start a crate's dependents once its metadata is written,
+  as `build` does, rather than after every crate below it finishes. A
+  crate that a proc macro or build script also needs no longer holds up
+  the crates that only check against it.
 - `artificer push` sends the remote store the units it lacks. A build with
   a remote store set pushes the units it compiled in the background, so
   every machine that shares the store fills it; over SSH the remote host

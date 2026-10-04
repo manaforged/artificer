@@ -129,6 +129,7 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | meta-cache | on | Cache Cargo metadata outside the workspace target directory |
 | threads | off | Use up to 8 rustc parallel frontend threads when rustc accepts them |
 | trust | on | Skip checks that only report errors in crates.io dependencies when rustc accepts `-Z trusted-crate` |
+| early | off | In `check` builds, start a crate's dependents once rustc writes its early metadata (item interfaces, before function bodies), when rustc accepts `-Z early-metadata` |
 | serve | off | Send handled builds to the local daemon and start it on demand. Not available on Windows |
 
 ## Environment variables

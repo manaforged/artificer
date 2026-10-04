@@ -98,16 +98,29 @@ fn probe_threads(dir: &Path) -> Vec<String> {
     Vec::new()
 }
 
-pub fn trusted(home: &Path, rustc: &str, dir: &Path) -> Vec<String> {
-    stamped(home, "trusted", rustc, || probe_trusted(dir))
+#[derive(Clone, Debug, Default)]
+pub struct ForkFlags {
+    pub trusted: Vec<String>,
+    pub early: Vec<String>,
 }
 
-fn probe_trusted(dir: &Path) -> Vec<String> {
-    let args = vec!["-Z".into(), "trusted-crate".into()];
-    if rustc_lib(&args, dir) {
-        return args;
+pub fn fork_flags(home: &Path, rustc: &str, dir: &Path, mods: &crate::mods::Mods) -> ForkFlags {
+    let probe = |on: bool, kind: &str, flag: &str| {
+        if !on {
+            return Vec::new();
+        }
+        stamped(home, kind, rustc, || {
+            let args = vec!["-Z".into(), flag.into()];
+            if rustc_lib(&args, dir) {
+                return args;
+            }
+            Vec::new()
+        })
+    };
+    ForkFlags {
+        trusted: probe(mods.trust, "trusted", "trusted-crate"),
+        early: probe(mods.early, "early", "early-metadata"),
     }
-    Vec::new()
 }
 
 fn threads_n(cores: usize) -> usize {

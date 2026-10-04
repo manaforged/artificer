@@ -136,6 +136,7 @@
 | Field | Description |
 | --- | --- |
 | <code>cranelift: bool</code> |  |
+| <code>early: bool</code> |  |
 | <code>enabled: bool</code> |  |
 | <code>linker: bool</code> |  |
 | <code>meta_cache: bool</code> |  |

@@ -2,6 +2,12 @@ use super::{Board, Unit};
 use std::cell::RefCell;
 use std::sync::Arc;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MetaStage {
+    Early,
+    Full,
+}
+
 #[derive(Clone)]
 pub(crate) struct Signal {
     board: Arc<Board>,
@@ -10,8 +16,8 @@ pub(crate) struct Signal {
 }
 
 impl Signal {
-    pub(crate) fn metadata_ready(&self) {
-        self.board.metadata(&self.unit);
+    pub(crate) fn metadata_ready(&self, stage: MetaStage) {
+        self.board.metadata(&self.unit, stage);
         if let Some(mark) = &self.mark {
             mark.mark();
         }

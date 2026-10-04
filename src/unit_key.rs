@@ -29,7 +29,19 @@ fn from_registry(pkg: &Package) -> bool {
 }
 
 pub(crate) fn trusted_args<'a>(sess: &'a Session, pkg: &Package) -> &'a [String] {
-    registry_only(pkg, &cargo::cargo_home(), &sess.settings.trusted)
+    registry_only(pkg, &cargo::cargo_home(), &sess.settings.fork.trusted)
+}
+
+pub(crate) fn early_consumer(sess: &Session, id: &str) -> bool {
+    sess.meta_only && !sess.settings.fork.early.is_empty() && !sess.must_link.contains(id)
+}
+
+pub(crate) fn early_args(sess: &Session) -> &[String] {
+    if sess.meta_only {
+        &sess.settings.fork.early
+    } else {
+        &[]
+    }
 }
 
 fn registry_only<'a>(pkg: &Package, cargo_home: &Path, args: &'a [String]) -> &'a [String] {
@@ -105,6 +117,7 @@ pub(crate) fn dep_manifest(
             .unwrap_or_default();
         lines.push(format!("{name} {}", sess.artifact_hash(&art.path)?));
     }
+    let early = early_consumer(sess, &node.id);
     for d in &node.deps {
         let usable = if tests {
             d.usable_for_lib() || d.usable_for_dev()
@@ -117,7 +130,7 @@ pub(crate) fn dep_manifest(
         let Some(art) = sess.get(&d.pkg) else {
             continue;
         };
-        let file = art.rmeta.clone().unwrap_or_else(|| art.path.clone());
+        let file = crate::invoke::meta_file(&art, early);
         let name = file
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())

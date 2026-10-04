@@ -22,6 +22,8 @@ struct Ready {
     remaining: HashSet<Unit>,
     done: HashSet<Unit>,
     meta: HashSet<Unit>,
+    early: HashSet<Unit>,
+    early_ok: HashSet<Unit>,
     in_flight: usize,
     failed: Vec<anyhow::Error>,
     reported: bool,
@@ -36,6 +38,8 @@ impl Ready {
             remaining: plan.units.iter().cloned().collect(),
             done: HashSet::new(),
             meta: HashSet::new(),
+            early: HashSet::new(),
+            early_ok: plan.early_ok.clone(),
             in_flight: 0,
             failed: Vec::new(),
             reported: false,
@@ -58,21 +62,24 @@ impl Ready {
         self.failed.push(error);
     }
 
-    fn has(&self, dep: &Unit, full: bool) -> bool {
-        !self.want.contains(dep) || self.done.contains(dep) || (!full && self.meta.contains(dep))
+    fn has(&self, dep: &Unit, full: bool, early: bool) -> bool {
+        !self.want.contains(dep)
+            || self.done.contains(dep)
+            || (!full && (self.meta.contains(dep) || (early && self.early.contains(dep))))
     }
 
     fn startable(&self, unit: &Unit) -> bool {
+        let early = self.early_ok.contains(unit);
         let meta = self
             .waits
             .meta
             .get(unit)
-            .is_none_or(|deps| deps.iter().all(|dep| self.has(dep, false)));
+            .is_none_or(|deps| deps.iter().all(|dep| self.has(dep, false, early)));
         let full = self
             .waits
             .full
             .get(unit)
-            .is_none_or(|deps| deps.iter().all(|dep| self.has(dep, true)));
+            .is_none_or(|deps| deps.iter().all(|dep| self.has(dep, true, false)));
         meta && full
     }
 
@@ -99,8 +106,15 @@ impl Board {
         self.ready.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn metadata(&self, unit: &Unit) {
-        self.lock().meta.insert(unit.clone());
+    fn metadata(&self, unit: &Unit, stage: MetaStage) {
+        {
+            let mut ready = self.lock();
+            let set = match stage {
+                MetaStage::Early => &mut ready.early,
+                MetaStage::Full => &mut ready.meta,
+            };
+            set.insert(unit.clone());
+        }
         self.wake.notify_all();
     }
 
@@ -339,7 +353,7 @@ pub(crate) fn job_cap() -> usize {
 
 mod plan;
 mod ready;
-pub(crate) use ready::signal;
+pub(crate) use ready::{MetaStage, signal};
 
 #[cfg(test)]
 #[path = "schedule_tests.rs"]

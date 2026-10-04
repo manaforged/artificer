@@ -16,6 +16,7 @@ fn ready(units: &[Unit], deps: &HashMap<Unit, Vec<Unit>>, links: &[Unit]) -> Rea
         units: units.to_vec(),
         deps: deps.clone(),
         links: links.iter().cloned().collect(),
+        early_ok: HashSet::new(),
     })
 }
 
@@ -146,6 +147,7 @@ fn a_panicking_unit_ends_the_build_instead_of_hanging() {
             units: vec![pkg("broken"), pkg("after")],
             deps,
             links: HashSet::new(),
+            early_ok: HashSet::new(),
         };
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             run_units(&meta, plan, |unit| {
@@ -163,4 +165,28 @@ fn a_panicking_unit_ends_the_build_instead_of_hanging() {
         std::env::remove_var("ARTIFICER_JOBS");
     }
     assert_eq!(panicked, Ok(true));
+}
+
+#[test]
+fn only_check_only_units_start_on_early_metadata() {
+    let ids = vec![pkg("dep"), pkg("checked"), pkg("generates")];
+    let mut deps: HashMap<Unit, Vec<Unit>> = HashMap::new();
+    deps.insert(pkg("checked"), vec![pkg("dep")]);
+    deps.insert(pkg("generates"), vec![pkg("dep")]);
+    let mut state = Ready::new(&Plan {
+        units: ids,
+        deps,
+        links: HashSet::new(),
+        early_ok: [pkg("checked")].into_iter().collect(),
+    });
+    assert_eq!(state.pick(), Some(pkg("dep")));
+    assert!(state.pick().is_none());
+    state.early.insert(pkg("dep"));
+    assert_eq!(state.pick(), Some(pkg("checked")));
+    assert!(
+        state.pick().is_none(),
+        "a unit that generates code needs full metadata"
+    );
+    state.meta.insert(pkg("dep"));
+    assert_eq!(state.pick(), Some(pkg("generates")));
 }

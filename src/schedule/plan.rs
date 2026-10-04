@@ -9,6 +9,7 @@ pub(super) struct Plan {
     pub(super) units: Vec<Unit>,
     pub(super) deps: HashMap<Unit, Vec<Unit>>,
     pub(super) links: HashSet<Unit>,
+    pub(super) early_ok: HashSet<Unit>,
 }
 
 pub(super) struct Waits {
@@ -39,12 +40,29 @@ pub(super) fn plan(
         d.push(Unit::Pkg(root.clone()));
         deps.insert(Unit::Extra(root.clone()), d);
     }
-    let links = units
+    let links: HashSet<Unit> = units
         .iter()
         .filter(|unit| unit_links(sess, meta, unit))
         .cloned()
         .collect();
-    Ok(Plan { units, deps, links })
+    let early_ok = units
+        .iter()
+        .filter(|unit| early_consumer(sess, unit, &links))
+        .cloned()
+        .collect();
+    Ok(Plan {
+        units,
+        deps,
+        links,
+        early_ok,
+    })
+}
+
+fn early_consumer(sess: &Session, unit: &Unit, links: &HashSet<Unit>) -> bool {
+    let Unit::Pkg(id) = unit else {
+        return false;
+    };
+    !links.contains(unit) && crate::unit_key::early_consumer(sess, id)
 }
 
 fn unit_links(sess: &Session, meta: &cargo::Metadata, unit: &Unit) -> bool {

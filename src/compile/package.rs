@@ -73,7 +73,9 @@ impl<'u> PackageUnit<'u> {
     }
 
     pub(super) fn pipelines(&self) -> bool {
-        self.shape == Shape::Lib && !self.proc_macro && self.types.iter().all(|t| t == "rlib")
+        matches!(self.shape, Shape::Lib | Shape::Meta)
+            && !self.proc_macro
+            && self.types.iter().all(|t| t == "rlib")
     }
 
     fn reads_metadata(&self) -> bool {
@@ -146,11 +148,16 @@ impl<'u> PackageUnit<'u> {
         self.pipelines().then(|| {
             let stem = format!("lib{}-{digest}", self.crate_name);
             let rmeta = out.join(format!("{stem}.rmeta"));
+            let (path, sibling) = match self.shape {
+                Shape::Meta => (rmeta.clone(), None),
+                _ => (out.join(format!("{stem}.rlib")), Some(rmeta.clone())),
+            };
             invoke::Early {
+                early_rmeta: out.join(invoke::EARLY_DIR).join(format!("{stem}.rmeta")),
                 artifact: Artifact {
                     crate_name: self.crate_name.clone(),
-                    path: out.join(format!("{stem}.rlib")),
-                    rmeta: Some(rmeta.clone()),
+                    path,
+                    rmeta: sibling,
                     proc_macro: false,
                 },
                 rmeta,
