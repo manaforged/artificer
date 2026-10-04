@@ -81,6 +81,7 @@
 | <code>meta_flags: Vec&lt;String&gt;</code> |  |
 | <code>no_default: bool</code> |  |
 | <code>release: bool</code> |  |
+| <code>target_dir: Option&lt;PathBuf&gt;</code> |  |
 | <code>targets: <a href="#targets">Targets</a></code> |  |
 | <code>workspace: bool</code> |  |
 
@@ -166,6 +167,7 @@
 | <code>op: String</code> |  |
 | <code>packages: Vec&lt;String&gt;</code> |  |
 | <code>release: bool</code> |  |
+| <code>target_dir: Option&lt;PathBuf&gt;</code> |  |
 | <code>tests: bool</code> |  |
 | <code>token: String</code> |  |
 | <code>workspace: bool</code> |  |
@@ -238,6 +240,7 @@
 | <code>no_run: bool</code> |  |
 | <code>only: Vec&lt;String&gt;</code> |  |
 | <code>release: bool</code> |  |
+| <code>target_dir: Option&lt;PathBuf&gt;</code> |  |
 | <code>workspace: bool</code> |  |
 
 **Trait implementations:** <code>Default</code>, <code>Debug</code>
@@ -518,7 +521,7 @@
 
 ### `sweep_dir`
 
-<pre>pub fn <a href="#sweep_dir">sweep_dir</a>(dir: &amp;Path, home: &amp;Path) -&gt; Result&lt;<a href="#sweepreport">SweepReport</a>&gt;</pre>
+<pre>pub fn <a href="#sweep_dir">sweep_dir</a>(dir: &amp;Path, target: Option&lt;&amp;Path&gt;, home: &amp;Path) -&gt; Result&lt;<a href="#sweepreport">SweepReport</a>&gt;</pre>
 
 
 ### `test_package`

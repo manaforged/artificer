@@ -37,6 +37,8 @@ pub struct Request {
     #[serde(default)]
     pub meta_flags: Vec<String>,
     #[serde(default)]
+    pub target_dir: Option<PathBuf>,
+    #[serde(default)]
     pub release: bool,
     #[serde(default)]
     pub link: bool,

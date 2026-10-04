@@ -51,10 +51,11 @@ impl Session {
         name: &str,
         members: &[String],
         packages: &[Package],
+        target: Option<&Path>,
     ) -> Result<Self> {
         Ok(Self {
             leases: Arc::default(),
-            settings: Settings::load(home, dir, ws, name, members, packages)?,
+            settings: Settings::load(home, dir, ws, name, members, packages, target)?,
             artifacts: Mutex::new(HashMap::new()),
             natives: Mutex::new(HashMap::new()),
             source_keys: Mutex::new(HashMap::new()),

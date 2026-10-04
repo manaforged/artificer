@@ -50,6 +50,7 @@ fn dispatch(home: &Path, req: &Request) -> Result<i32> {
                 features: req.features.clone(),
                 no_default: req.no_default,
                 meta_flags: req.meta_flags.clone(),
+                target_dir: req.target_dir.clone(),
                 release: req.release,
                 link: req.link || req.op == "build",
                 targets: crate::Targets {
@@ -70,6 +71,7 @@ fn dispatch(home: &Path, req: &Request) -> Result<i32> {
                 features: req.features.clone(),
                 no_default: req.no_default,
                 meta_flags: req.meta_flags.clone(),
+                target_dir: req.target_dir.clone(),
                 release: req.release,
                 lib: req.lib,
                 doc: req.doc,

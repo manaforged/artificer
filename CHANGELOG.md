@@ -53,6 +53,10 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 - A workspace that has two packages with the same name and version from
   different sources, such as a path crate and a git dependency, now builds
   through the cache instead of running Cargo.
+- `--target-dir DIR` on `build`, `check`, `test`, `run`, and `clean` now
+  goes through the cache instead of running Cargo. As in Cargo, it wins
+  over `CARGO_TARGET_DIR` and `build.target-dir`, and a relative path is
+  relative to the current directory.
 
 ## 0.1.1 - 2026-09-26
 

@@ -59,6 +59,7 @@ fn down_returns_none() {
         tests: false,
         all_targets: false,
         args: Vec::new(),
+        target_dir: None,
     };
     assert!(artificer::serve_try(&home, &mut req).is_none());
 }
@@ -99,6 +100,7 @@ fn daemon_check_hits_second() {
         tests: false,
         all_targets: false,
         args: Vec::new(),
+        target_dir: None,
     };
     let code = artificer::serve_try(&home, &mut req)
         .expect("daemon up")
@@ -153,6 +155,7 @@ fn a_daemon_from_an_older_install_is_retired() {
         tests: false,
         all_targets: false,
         args: Vec::new(),
+        target_dir: None,
     };
     drop(artificer::serve_try(&home, &mut req));
     assert_ne!(
@@ -200,6 +203,7 @@ fn changed_compiler_environment_is_refused() {
         tests: false,
         all_targets: false,
         args: Vec::new(),
+        target_dir: None,
     };
     let code = artificer::serve_try(&home, &mut req)
         .expect("daemon up")

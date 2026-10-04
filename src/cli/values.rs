@@ -2,8 +2,9 @@ use super::*;
 
 pub(super) const COMMANDS: [&str; 6] = ["check", "build", "test", "run", "clean", "warm"];
 pub(super) const DIRECT_ONLY: [&str; 2] = ["clean", "warm"];
-pub(super) const VALUED: [&str; 10] = [
+pub(super) const VALUED: [&str; 11] = [
     "--package",
+    "--target-dir",
     "--bin",
     "--example",
     "--manifest-path",

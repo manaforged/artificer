@@ -47,7 +47,15 @@ fn run_example(
         opts.no_default,
         &opts.meta_flags,
     );
-    let plan = plan(dir, packages, home, &extra, false, true)?;
+    let plan = plan(
+        dir,
+        packages,
+        home,
+        &extra,
+        false,
+        true,
+        opts.target_dir.as_deref(),
+    )?;
     let (meta, roots) = (&plan.meta, &plan.roots);
     let root = roots.first().context("no package to run")?.clone();
     let order = cargo::test_closure_many(meta, roots)?;
@@ -60,6 +68,7 @@ fn run_example(
         profile,
         &meta.workspace_members,
         &meta.packages,
+        opts.target_dir.as_deref(),
     )?;
     sess.primary = roots.iter().cloned().collect();
     let compiled = schedule::compile_ids(&sess, meta, &order)?;

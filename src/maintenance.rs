@@ -78,9 +78,9 @@ pub fn store_stat(home: &Path) -> Result<StoreStat> {
     Ok(stat)
 }
 
-pub fn sweep_dir(dir: &Path, home: &Path) -> Result<SweepReport> {
+pub fn sweep_dir(dir: &Path, target: Option<&Path>, home: &Path) -> Result<SweepReport> {
     let mut report = match cargo::find_manifest(dir) {
-        Ok(manifest) => sweep_workspace(&manifest, dir, home)?,
+        Ok(manifest) => sweep_workspace(&manifest, dir, target, home)?,
         Err(_) if dir.is_dir() => SweepReport {
             scratch_dirs: sweep::gc_scratch(home)?,
             ..SweepReport::default()
@@ -94,7 +94,12 @@ pub fn sweep_dir(dir: &Path, home: &Path) -> Result<SweepReport> {
     Ok(report)
 }
 
-fn sweep_workspace(manifest: &Path, dir: &Path, home: &Path) -> Result<SweepReport> {
+fn sweep_workspace(
+    manifest: &Path,
+    dir: &Path,
+    target: Option<&Path>,
+    home: &Path,
+) -> Result<SweepReport> {
     let meta = cargo::metadata(manifest, home)?;
     let fallback = manifest.parent().unwrap_or(dir);
     let workspace = if meta.workspace_root.as_os_str().is_empty() {
@@ -102,7 +107,7 @@ fn sweep_workspace(manifest: &Path, dir: &Path, home: &Path) -> Result<SweepRepo
     } else {
         meta.workspace_root.as_path()
     };
-    let target = crate::config::target_dir(dir, workspace);
+    let target = crate::config::target_dir(target, dir, workspace);
     sweep::workspace(&target, home, true)
 }
 

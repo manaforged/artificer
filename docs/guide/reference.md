@@ -26,6 +26,7 @@ The supported build commands accept the applicable subset of:
 - --workspace;
 - --features, --all-features, and --no-default-features;
 - --locked, --offline, and --frozen;
+- --target-dir DIR, which wins over `CARGO_TARGET_DIR` and `build.target-dir`;
 - --release and the dev or release profile names;
 - --message-format=human, =json, and =json-render-diagnostics;
 - -j/--jobs N, -q/--quiet, -v/--verbose, and --color auto|always|never;

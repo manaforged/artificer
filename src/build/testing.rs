@@ -14,6 +14,7 @@ pub struct TestOpts {
     pub doc: bool,
     pub only: Vec<String>,
     pub args: Vec<String>,
+    pub target_dir: Option<PathBuf>,
 }
 
 pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpts) -> Result<i32> {
@@ -25,7 +26,15 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
         opts.no_default,
         &opts.meta_flags,
     );
-    let plan = plan(dir, packages, home, &extra, opts.workspace, true)?;
+    let plan = plan(
+        dir,
+        packages,
+        home,
+        &extra,
+        opts.workspace,
+        true,
+        opts.target_dir.as_deref(),
+    )?;
     let (meta, roots) = (&plan.meta, &plan.roots);
     let order = cargo::test_closure_many(meta, roots)?;
     let ws = cargo::root(meta, &plan.pkg_dir);
@@ -37,6 +46,7 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
         profile,
         &meta.workspace_members,
         &meta.packages,
+        opts.target_dir.as_deref(),
     )?;
     sess.json = opts.json;
     sess.primary = roots.iter().cloned().collect();

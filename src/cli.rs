@@ -12,6 +12,7 @@ pub struct BuildArgs {
     pub bin: Option<String>,
     pub example: Option<String>,
     pub dir: Option<PathBuf>,
+    pub target_dir: Option<PathBuf>,
     pub no_run: bool,
     pub json: bool,
     pub all_features: bool,
@@ -176,6 +177,16 @@ impl<'a> Parser<'a> {
                     .ok_or_else(|| fallback("this manifest path belongs to cargo"))?;
                 self.seen.manifest = true;
                 self.out.dir = Some(parent);
+                Ok(Flow::Next)
+            }),
+            "--target-dir" => self.value(name, attached).and_then(|path| {
+                if self.out.target_dir.is_some() {
+                    return Err(fallback("multiple target directories belong to cargo"));
+                }
+                let dir = std::path::absolute(path).map_err(|e| {
+                    fallback(format!("target directory {path} belongs to cargo: {e}"))
+                })?;
+                self.out.target_dir = Some(dir);
                 Ok(Flow::Next)
             }),
             "--bin" => self.value(name, attached).map(|v| {

@@ -241,3 +241,47 @@ fn why_miss_does_not_disclose_compile_time_environment_values() {
         "diagnostic exposed an environment value"
     );
 }
+
+#[test]
+fn a_target_directory_flag_builds_through_the_cache_into_that_directory() {
+    let temp = tempfile::tempdir().expect("create isolated fixture");
+    let root = temp.path().join("project");
+    write_clean_pkg(&root);
+    fs::write(
+        root.join("src/main.rs"),
+        "fn main() { println!(\"flag output\"); }",
+    )
+    .expect("write fixture file");
+    let home = temp.path().join("store");
+    let result = artificer(&home, &root)
+        .args(["build", "--target-dir", "chosen"])
+        .env("CARGO_TARGET_DIR", temp.path().join("from-env"))
+        .output()
+        .expect("run fixture command");
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let binary = root.join(format!(
+        "chosen/debug/clean{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    let output = Command::new(&binary)
+        .output()
+        .expect("the flag's directory must hold the binary");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "flag output"
+    );
+    assert!(
+        !temp.path().join("from-env").exists(),
+        "the flag wins over CARGO_TARGET_DIR"
+    );
+    let stat = artificer(&home, &root)
+        .args(["stat", "--json"])
+        .output()
+        .expect("read store statistics");
+    let value: serde_json::Value = serde_json::from_slice(&stat.stdout).expect("stat JSON");
+    assert_eq!(value["fallbacks"], 0, "{value}");
+}

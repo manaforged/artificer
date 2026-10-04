@@ -232,7 +232,7 @@ fn build(args: &[String]) -> Result<Dispatch> {
     }
     let dir = a.dir.clone().map_or_else(env::current_dir, Ok)?;
     if sub == help::Sub::Clean {
-        return clean(&dir, &home);
+        return clean(&dir, a.target_dir.as_deref(), &home);
     }
     let mut req = request(&a, sub, dir);
     if let Some(reason) = artificer::passthrough_reason(&req, dev(&a, sub, &req), &home)? {
@@ -264,20 +264,6 @@ fn declined(home: &Path) -> Result<Option<Dispatch>> {
     Ok(None)
 }
 
-fn clean(dir: &Path, home: &Path) -> Result<Dispatch> {
-    let report = artificer::sweep_dir(dir, home)?;
-    eprintln!(
-        "artificer: removed {} incremental dir(s), {} scratch copy(ies)",
-        report.incremental_dirs, report.scratch_dirs
-    );
-    eprintln!(
-        "artificer: evicted {} unit(s), {:.1} MB",
-        report.evicted_units,
-        report.evicted_bytes as f64 / 1_048_576.0
-    );
-    Ok(ExitCode::from(0).into())
-}
-
 fn request(a: &cli::BuildArgs, sub: help::Sub, dir: PathBuf) -> artificer::ServeRequest {
     let warm = sub == help::Sub::Warm;
     artificer::ServeRequest {
@@ -291,6 +277,7 @@ fn request(a: &cli::BuildArgs, sub: help::Sub, dir: PathBuf) -> artificer::Serve
         features: a.features.clone(),
         no_default: a.no_default,
         meta_flags: a.meta_flags.clone(),
+        target_dir: a.target_dir.clone(),
         release: a.release,
         link: sub == help::Sub::Build,
         no_run: a.no_run,
@@ -323,6 +310,7 @@ fn run_target(a: &cli::BuildArgs, req: &artificer::ServeRequest, home: &Path) ->
             features: req.features.clone(),
             no_default: req.no_default,
             meta_flags: req.meta_flags.clone(),
+            target_dir: req.target_dir.clone(),
             release: req.release,
             ..Default::default()
         },
@@ -347,6 +335,7 @@ fn test(req: &mut artificer::ServeRequest, home: &Path) -> Result<ExitCode> {
             features: req.features.clone(),
             no_default: req.no_default,
             meta_flags: req.meta_flags.clone(),
+            target_dir: req.target_dir.clone(),
             release: req.release,
             lib: req.lib,
             doc: req.doc,
@@ -372,6 +361,7 @@ fn check(req: &mut artificer::ServeRequest, home: &Path) -> Result<ExitCode> {
             features: req.features.clone(),
             no_default: req.no_default,
             meta_flags: req.meta_flags.clone(),
+            target_dir: req.target_dir.clone(),
             release: req.release,
             link: req.link,
             targets: artificer::Targets {
@@ -383,8 +373,11 @@ fn check(req: &mut artificer::ServeRequest, home: &Path) -> Result<ExitCode> {
     Ok(child_exit(code))
 }
 
+#[path = "main/clean.rs"]
+mod clean;
 #[path = "main/commands.rs"]
 mod commands;
+use clean::clean;
 #[path = "main/help.rs"]
 mod help;
 use commands::{

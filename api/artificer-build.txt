@@ -38,6 +38,7 @@ pub artificer::CheckOpts::link: bool
 pub artificer::CheckOpts::meta_flags: alloc::vec::Vec<alloc::string::String>
 pub artificer::CheckOpts::no_default: bool
 pub artificer::CheckOpts::release: bool
+pub artificer::CheckOpts::target_dir: core::option::Option<std::path::PathBuf>
 pub artificer::CheckOpts::targets: artificer::Targets
 pub artificer::CheckOpts::workspace: bool
 impl core::clone::Clone for artificer::CheckOpts
@@ -93,6 +94,7 @@ pub artificer::ServeRequest::only: alloc::vec::Vec<alloc::string::String>
 pub artificer::ServeRequest::op: alloc::string::String
 pub artificer::ServeRequest::packages: alloc::vec::Vec<alloc::string::String>
 pub artificer::ServeRequest::release: bool
+pub artificer::ServeRequest::target_dir: core::option::Option<std::path::PathBuf>
 pub artificer::ServeRequest::tests: bool
 pub artificer::ServeRequest::token: alloc::string::String
 pub artificer::ServeRequest::workspace: bool
@@ -146,6 +148,7 @@ pub artificer::TestOpts::no_default: bool
 pub artificer::TestOpts::no_run: bool
 pub artificer::TestOpts::only: alloc::vec::Vec<alloc::string::String>
 pub artificer::TestOpts::release: bool
+pub artificer::TestOpts::target_dir: core::option::Option<std::path::PathBuf>
 pub artificer::TestOpts::workspace: bool
 impl core::default::Default for artificer::TestOpts
 impl core::fmt::Debug for artificer::TestOpts
@@ -199,7 +202,7 @@ pub fn artificer::set_quiet(on: bool)
 pub fn artificer::set_trace(on: bool)
 pub fn artificer::stock_cargo() -> std::path::PathBuf
 pub fn artificer::store_stat(home: &std::path::Path) -> anyhow::Result<artificer::StoreStat>
-pub fn artificer::sweep_dir(dir: &std::path::Path, home: &std::path::Path) -> anyhow::Result<artificer::SweepReport>
+pub fn artificer::sweep_dir(dir: &std::path::Path, target: core::option::Option<&std::path::Path>, home: &std::path::Path) -> anyhow::Result<artificer::SweepReport>
 pub fn artificer::test_package(dir: &std::path::Path, packages: &[alloc::string::String], home: &std::path::Path, opts: &artificer::TestOpts) -> anyhow::Result<i32>
 pub fn artificer::toolchain_path() -> core::option::Option<std::ffi::os_str::OsString>
 pub fn artificer::uninstall(cargo_home: &std::path::Path, control: &std::path::Path) -> anyhow::Result<alloc::vec::Vec<std::path::PathBuf>>

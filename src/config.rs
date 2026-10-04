@@ -182,9 +182,10 @@ pub fn config(dir: &Path) -> Config {
     out
 }
 
-pub(crate) fn target_dir(dir: &Path, workspace: &Path) -> PathBuf {
-    std::env::var_os("CARGO_TARGET_DIR")
-        .map(|path| dir.join(path))
+pub(crate) fn target_dir(explicit: Option<&Path>, dir: &Path, workspace: &Path) -> PathBuf {
+    explicit
+        .map(Path::to_path_buf)
+        .or_else(|| std::env::var_os("CARGO_TARGET_DIR").map(|path| dir.join(path)))
         .or_else(|| config(dir).target_dir)
         .unwrap_or_else(|| workspace.join("target"))
 }

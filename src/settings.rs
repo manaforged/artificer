@@ -57,6 +57,7 @@ impl Settings {
         name: &str,
         members: &[String],
         packages: &[Package],
+        target: Option<&Path>,
     ) -> Result<Self> {
         let rustc = crate::out::timed("rustc -vV", || key::rustc_version_in(home, dir))?;
         let host = key::rustc_host(&rustc)?;
@@ -125,7 +126,7 @@ impl Settings {
             .iter()
             .any(|a| a.starts_with("lto=") && a != "lto=false" && a != "lto=off");
         Ok(Self {
-            target_dir: crate::config::target_dir(dir, ws),
+            target_dir: crate::config::target_dir(target, dir, ws),
             workspace_root: ws.to_path_buf(),
             home: crate::resolve_path(home),
             toolchain_dir: dir.to_path_buf(),

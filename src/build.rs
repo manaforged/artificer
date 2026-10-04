@@ -44,6 +44,7 @@ pub struct CheckOpts {
     pub features: Vec<String>,
     pub no_default: bool,
     pub meta_flags: Vec<String>,
+    pub target_dir: Option<PathBuf>,
     pub release: bool,
     pub link: bool,
     pub targets: Targets,
@@ -187,6 +188,7 @@ pub(super) fn plan(
     extra: &[String],
     workspace: bool,
     dev: bool,
+    target: Option<&Path>,
 ) -> Result<Plan> {
     let manifest = cargo::find_manifest(dir)?;
     let extra: Vec<&str> = extra.iter().map(String::as_str).collect();
@@ -194,7 +196,7 @@ pub(super) fn plan(
         cargo::metadata_extra(&manifest, &extra, home)
     })?;
     let pkg_dir = manifest.parent().unwrap_or(dir).to_path_buf();
-    sweep_meta(&meta, home, &pkg_dir)?;
+    sweep_meta(&meta, home, &pkg_dir, target)?;
     let roots = check_roots(&meta, &pkg_dir, packages, workspace)?;
     let found = crate::out::timed("probe", || {
         features::selected(&manifest, &roots, &meta, &extra, dev, home)
@@ -227,7 +229,15 @@ fn check_graph(
         &opts.meta_flags,
     );
     let dev = opts.targets.tests || opts.targets.all;
-    let plan = plan(dir, packages, home, &extra, opts.workspace, dev)?;
+    let plan = plan(
+        dir,
+        packages,
+        home,
+        &extra,
+        opts.workspace,
+        dev,
+        opts.target_dir.as_deref(),
+    )?;
     let root = plan
         .roots
         .first()
@@ -262,6 +272,7 @@ fn check_session(home: &Path, plan: &Plan, meta_only: bool, opts: &CheckOpts) ->
             profile_name(opts.release, "dev"),
             &meta.workspace_members,
             &meta.packages,
+            opts.target_dir.as_deref(),
         )
     })?;
     sess.json = opts.json;
@@ -336,14 +347,19 @@ fn target_tmpdir(settings: &crate::settings::Settings) -> Result<PathBuf> {
     Ok(tmp)
 }
 
-fn sweep_meta(meta: &cargo::Metadata, home: &Path, fallback: &Path) -> Result<()> {
+fn sweep_meta(
+    meta: &cargo::Metadata,
+    home: &Path,
+    fallback: &Path,
+    target: Option<&Path>,
+) -> Result<()> {
     if mods::load(home)?.sweep {
         let workspace = if meta.workspace_root.as_os_str().is_empty() {
             fallback
         } else {
             meta.workspace_root.as_path()
         };
-        let target = config::target_dir(fallback, workspace);
+        let target = config::target_dir(target, fallback, workspace);
         if let Err(e) = sweep::workspace(&target, home, false) {
             crate::out::err(format!("artificer: sweep skipped: {e}"));
         }
