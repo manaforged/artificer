@@ -283,9 +283,12 @@ fn an_edit_is_never_masked_by_a_timestamp() {
         ("Cargo.toml", &manifest("edit", "")),
         ("src/main.rs", "fn main() { println!(\"{}\", 1) }\n"),
     ]);
-    p.parity_run(&[]);
     let src = p.path("src/main.rs");
-    let before = fs::metadata(&src).unwrap().modified().unwrap();
+    let before = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let f = fs::File::options().write(true).open(&src).unwrap();
+    f.set_modified(before).unwrap();
+    drop(f);
+    p.parity_run(&[]);
     fs::write(&src, "fn main() { println!(\"{}\", 9) }\n").unwrap();
     let f = fs::File::options().write(true).open(&src).unwrap();
     f.set_modified(before).unwrap();

@@ -41,7 +41,41 @@ fn loaded() -> &'static Loaded {
     LOADED.get_or_init(Loaded::default)
 }
 
-fn stamp(meta: &fs::Metadata) -> Option<Stamp> {
+#[cfg(windows)]
+fn change_time(path: &Path) -> Option<i128> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_BASIC_INFO, FileBasicInfo, GetFileInformationByHandleEx,
+    };
+    let file = fs::File::open(path).ok()?;
+    let mut info = FILE_BASIC_INFO {
+        CreationTime: 0,
+        LastAccessTime: 0,
+        LastWriteTime: 0,
+        ChangeTime: 0,
+        FileAttributes: 0,
+    };
+    let size = u32::try_from(std::mem::size_of::<FILE_BASIC_INFO>()).ok()?;
+    // SAFETY: `file` stays open for the call and `info` is a FILE_BASIC_INFO of the size passed.
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileBasicInfo,
+            (&raw mut info).cast(),
+            size,
+        )
+    };
+    (ok != 0).then(|| i128::from(info.ChangeTime))
+}
+
+#[cfg_attr(
+    not(windows),
+    expect(
+        unused_variables,
+        reason = "only Windows reads the change time by path"
+    )
+)]
+fn stamp(path: &Path, meta: &fs::Metadata) -> Option<Stamp> {
     let mtime_ns = meta
         .modified()
         .ok()?
@@ -58,10 +92,7 @@ fn stamp(meta: &fs::Metadata) -> Option<Stamp> {
         )
     };
     #[cfg(windows)]
-    let (inode, device, ctime_ns) = {
-        use std::os::windows::fs::MetadataExt;
-        (None, None, Some(i128::from(meta.creation_time())))
-    };
+    let (inode, device, ctime_ns) = (None, None, Some(change_time(path)?));
     #[cfg(not(any(unix, windows)))]
     let (inode, device, ctime_ns) = (None, None, None);
     Some(Stamp {
@@ -124,7 +155,10 @@ impl<'a> Memo<'a> {
         let Ok(canonical) = fs::canonicalize(path) else {
             return hash(path);
         };
-        let Some(before) = fs::metadata(&canonical).ok().as_ref().and_then(stamp) else {
+        let Some(before) = fs::metadata(&canonical)
+            .ok()
+            .and_then(|meta| stamp(&canonical, &meta))
+        else {
             return hash(path);
         };
         let shard = shard_path(home, &canonical);
@@ -132,7 +166,9 @@ impl<'a> Memo<'a> {
             return Ok(hit);
         }
         let digest = hash(&canonical)?;
-        let after = fs::metadata(&canonical).ok().as_ref().and_then(stamp);
+        let after = fs::metadata(&canonical)
+            .ok()
+            .and_then(|meta| stamp(&canonical, &meta));
         if after == Some(before) && settled(&before) {
             let entry = Entry {
                 stamp: before,
