@@ -12,9 +12,6 @@ pub(crate) fn style(sess: &Session, cmd: &mut Command, link: bool, pkg: &Package
     let settings = &sess.settings;
     cmd.env_remove("RUSTFLAGS");
     cmd.env_remove("CARGO_ENCODED_RUSTFLAGS");
-    if settings.mods.slim {
-        cmd.arg("-C").arg("debuginfo=line-tables-only");
-    }
     if !settings.lto || sess.build_only.contains(&pkg.id) {
         cmd.arg("-C").arg("embed-bitcode=no");
     }

@@ -117,3 +117,36 @@ fn rustc_shares_the_job_token_pool() {
         .unwrap_or_else(|| panic!("no rustc command for alpha: {stderr}"));
     assert!(alpha.contains("--jobserver-auth=fifo:"), "{alpha}");
 }
+
+#[test]
+fn the_slim_mode_lowers_debug_info() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("ws");
+    let home = tmp.path().join("home");
+    write_workspace(&root, &[("alpha", "pub fn value() -> u8 { 1 }\n")]);
+    let mods = artificer(&home, &root)
+        .args(["mods", "on", "slim"])
+        .output()
+        .unwrap();
+    assert!(
+        mods.status.success(),
+        "{}",
+        String::from_utf8_lossy(&mods.stderr)
+    );
+    let out = artificer(&home, &root)
+        .env("ARTIFICER_TRACE", "1")
+        .arg("build")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    let alpha = stderr
+        .lines()
+        .find(|line| line.contains("\"--crate-name\" \"alpha\""))
+        .unwrap_or_else(|| panic!("no rustc command for alpha: {stderr}"));
+    let last = alpha
+        .rsplit("\"debuginfo=")
+        .next()
+        .and_then(|rest| rest.split('"').next());
+    assert_eq!(last, Some("line-tables-only"), "{alpha}");
+}

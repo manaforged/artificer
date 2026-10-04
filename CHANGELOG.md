@@ -9,6 +9,8 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- The `slim` mode lowers debug info to line tables again. Its flag came
+  before the profile's `-C debuginfo`, so rustc used the profile's value.
 - rustc receives Artificer's job token pool, as it receives Cargo's, so
   its extra threads run only on idle cores. The `threads` mode now uses
   up to 8 frontend threads instead of a quarter of the cores. With both,
