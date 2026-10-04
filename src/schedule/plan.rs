@@ -244,6 +244,7 @@ pub(super) fn planned(
                 version,
                 role,
                 links: plan.links.contains(unit),
+                early: plan.early_ok.contains(unit),
                 deps: plan
                     .deps
                     .get(unit)

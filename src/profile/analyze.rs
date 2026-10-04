@@ -153,11 +153,15 @@ fn costs(profile: &Profile) -> Costs {
     Costs { cpu, rss }
 }
 
-fn available(dep: &UnitRecord, links: bool) -> Option<u64> {
-    if links {
-        dep.end_us
+fn available(dep: &UnitRecord, unit: &UnitRecord) -> Option<u64> {
+    if unit.links {
+        return dep.end_us;
+    }
+    let meta = dep.meta_us.or(dep.end_us);
+    if unit.early {
+        dep.early_us.or(meta)
     } else {
-        dep.meta_us.or(dep.end_us)
+        meta
     }
 }
 
@@ -166,7 +170,7 @@ fn ready_us(profile: &Profile, unit: &UnitRecord, origin: u64) -> u64 {
         .iter()
         .filter_map(|dep| usize::try_from(*dep).ok())
         .filter_map(|dep| profile.units.get(dep))
-        .filter_map(|dep| available(dep, unit.links))
+        .filter_map(|dep| available(dep, unit))
         .max()
         .unwrap_or(origin)
 }
@@ -218,10 +222,7 @@ pub(crate) fn critical_path(profile: &Profile) -> Vec<u32> {
             .iter()
             .filter_map(|dep| usize::try_from(*dep).ok())
             .filter_map(|dep| {
-                let at = profile
-                    .units
-                    .get(dep)
-                    .and_then(|d| available(d, unit.links))?;
+                let at = profile.units.get(dep).and_then(|d| available(d, unit))?;
                 Some((at, dep))
             })
             .max()

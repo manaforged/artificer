@@ -1,4 +1,4 @@
-use super::model::{Outcome, Part, Pass, Profile, Role, SCHEMA, Span, UnitRecord, Usage};
+use super::model::{Outcome, Part, Pass, Profile, SCHEMA, Span, UnitRecord, Usage};
 use super::phase::{Phase, ProcessPhase, WrapperPhase};
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
@@ -25,7 +25,7 @@ impl Recorder {
         }
     }
 
-    fn lock(&self) -> MutexGuard<'_, Part> {
+    pub(super) fn lock(&self) -> MutexGuard<'_, Part> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -33,7 +33,7 @@ impl Recorder {
         micros(self.epoch.elapsed())
     }
 
-    fn mark(&self, index: u32, edit: impl FnOnce(&mut UnitRecord, u64)) {
+    pub(super) fn mark(&self, index: u32, edit: impl FnOnce(&mut UnitRecord, u64)) {
         let now = self.now();
         let mut state = self.lock();
         if let Some(unit) = usize::try_from(index)
@@ -55,6 +55,18 @@ thread_local! {
     static UNIT: Cell<Option<u32>> = const { Cell::new(None) };
     static OPEN: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
     static SCRIPTS: Cell<u32> = const { Cell::new(0) };
+}
+
+pub(super) fn current_worker() -> Option<u16> {
+    WORKER.get()
+}
+
+pub(super) fn current_unit() -> Option<u32> {
+    UNIT.get()
+}
+
+pub(super) fn set_unit(unit: Option<u32>) {
+    UNIT.set(unit);
 }
 
 pub(crate) fn current() -> Option<Arc<Recorder>> {
@@ -186,6 +198,7 @@ pub(crate) fn merge(part: Part, sent: Instant) {
         unit.start_us = unit.start_us.map(|at| at.saturating_add(offset));
         unit.end_us = unit.end_us.map(|at| at.saturating_add(offset));
         unit.meta_us = unit.meta_us.map(|at| at.saturating_add(offset));
+        unit.early_us = unit.early_us.map(|at| at.saturating_add(offset));
         state.units.push(unit);
     }
     for mut span in part.spans {
@@ -194,87 +207,6 @@ pub(crate) fn merge(part: Part, sent: Instant) {
         span.end_us = span.end_us.saturating_add(offset);
         state.spans.push(span);
     }
-}
-
-pub(crate) struct PlannedUnit {
-    pub(crate) package: String,
-    pub(crate) name: String,
-    pub(crate) version: String,
-    pub(crate) role: Role,
-    pub(crate) links: bool,
-    pub(crate) deps: Vec<usize>,
-}
-
-#[derive(Clone)]
-pub(crate) struct MetaMark {
-    recorder: Arc<Recorder>,
-    unit: u32,
-}
-
-impl MetaMark {
-    pub(crate) fn mark(&self) {
-        self.recorder.mark(self.unit, |unit, now| {
-            unit.meta_us.get_or_insert(now);
-        });
-    }
-}
-
-pub(crate) fn meta_mark() -> Option<MetaMark> {
-    Some(MetaMark {
-        recorder: current()?,
-        unit: UNIT.get()?,
-    })
-}
-
-pub(crate) fn plan(units: Vec<PlannedUnit>) -> Option<u32> {
-    let recorder = current()?;
-    let mut state = recorder.lock();
-    let base = u32::try_from(state.units.len()).ok()?;
-    state.units.extend(units.into_iter().map(|unit| {
-        UnitRecord {
-            package: unit.package,
-            name: unit.name,
-            version: unit.version,
-            role: unit.role,
-            deps: unit
-                .deps
-                .into_iter()
-                .filter_map(|dep| u32::try_from(dep).ok())
-                .map(|dep| base.saturating_add(dep))
-                .collect(),
-            start_us: None,
-            end_us: None,
-            meta_us: None,
-            links: unit.links,
-            worker: None,
-            outcome: None,
-        }
-    }));
-    Some(base)
-}
-
-pub(crate) fn unit<T, E>(index: Option<u32>, work: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
-    let (Some(index), Some(recorder)) = (index, current()) else {
-        return work();
-    };
-    let worker = WORKER.get();
-    recorder.mark(index, |unit, now| {
-        unit.start_us = Some(now);
-        unit.worker = worker;
-    });
-    UNIT.set(Some(index));
-    let result = work();
-    UNIT.set(None);
-    let failed = result.is_err();
-    recorder.mark(index, |unit, now| {
-        unit.end_us = Some(now);
-        unit.outcome = Some(match (failed, unit.outcome) {
-            (true, _) => Outcome::Failed,
-            (false, Some(Outcome::Miss)) => Outcome::Miss,
-            _ => Outcome::Hit,
-        });
-    });
-    result
 }
 
 pub fn span<T>(phase: impl Into<Phase>, work: impl FnOnce() -> T) -> T {

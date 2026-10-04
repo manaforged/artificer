@@ -70,6 +70,12 @@ pub struct Span {
     pub passes: Vec<Pass>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MetaStage {
+    Early,
+    Full,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UnitRecord {
     pub package: String,
@@ -84,8 +90,12 @@ pub struct UnitRecord {
     pub end_us: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub meta_us: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub early_us: Option<u64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub links: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub early: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worker: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

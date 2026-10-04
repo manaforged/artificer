@@ -12,7 +12,9 @@ fn unit(name: &str, deps: &[u32], start_ms: u64, end_ms: u64) -> UnitRecord {
         start_us: Some(start_ms * 1000),
         end_us: Some(end_ms * 1000),
         meta_us: None,
+        early_us: None,
         links: false,
+        early: false,
         worker: Some(0),
         outcome: Some(Outcome::Miss),
     }
@@ -139,4 +141,29 @@ fn a_library_is_ready_at_its_dependency_metadata_and_a_linker_at_its_end() {
         .map(|unit| unit.wait_ms);
     assert_eq!(user, Some(50));
     assert_eq!(analysis.critical_ms, 1100);
+}
+
+#[test]
+fn an_early_reader_is_ready_at_early_metadata_and_a_library_at_full_metadata() {
+    let mut base = unit("base", &[], 0, 1000);
+    base.early_us = Some(100_000);
+    base.meta_us = Some(600_000);
+    let mut checked = unit("checked", &[0], 150, 400);
+    checked.early = true;
+    let library = unit("library", &[0], 650, 900);
+    let part = Part {
+        units: vec![base, checked, library],
+        spans: Vec::new(),
+        target_dir: None,
+    };
+    let analysis = analyze(&profile(part, 1000));
+    let wait = |name: &str| {
+        analysis
+            .top_units
+            .iter()
+            .find(|unit| unit.name == name)
+            .map(|unit| unit.wait_ms)
+    };
+    assert_eq!(wait("checked"), Some(50));
+    assert_eq!(wait("library"), Some(50));
 }

@@ -37,11 +37,7 @@ pub(crate) fn early_consumer(sess: &Session, id: &str) -> bool {
 }
 
 pub(crate) fn early_args(sess: &Session) -> &[String] {
-    if sess.meta_only {
-        &sess.settings.fork.early
-    } else {
-        &[]
-    }
+    &sess.settings.fork.early
 }
 
 fn registry_only<'a>(pkg: &Package, cargo_home: &Path, args: &'a [String]) -> &'a [String] {
