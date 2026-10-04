@@ -39,6 +39,8 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
   seconds for a token takes back any whose holder is gone.
 - The `slim` mode lowers debug info to line tables again. Its flag came
   before the profile's `-C debuginfo`, so rustc used the profile's value.
+- The `slim` mode builds on Windows. It passed `-C split-debuginfo=off`,
+  which rustc rejects on MSVC targets.
 - The `threads` mode uses up to 8 frontend threads instead of a quarter
   of the cores.
 - The `threads`, `cranelift`, and `linker` modes take effect again. Their

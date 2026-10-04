@@ -36,7 +36,7 @@ pub(crate) fn style(sess: &Session, cmd: &mut Command, link: bool, pkg: &Package
     for a in crate::unit_key::early_args(sess) {
         cmd.arg(a);
     }
-    if settings.mods.slim {
+    if settings.mods.slim && !cfg!(target_env = "msvc") {
         cmd.arg("-C").arg("split-debuginfo=off");
     }
     for a in check_cfg_args(pkg) {

@@ -77,6 +77,15 @@ fn shim(home: &Path, dir: &Path) -> Command {
     cmd
 }
 
+fn file_url(path: &Path) -> String {
+    let path = path.display().to_string().replace('\\', "/");
+    if path.starts_with('/') {
+        format!("file://{path}")
+    } else {
+        format!("file:///{path}")
+    }
+}
+
 fn write_pkg(root: &Path) {
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(
