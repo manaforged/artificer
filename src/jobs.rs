@@ -166,19 +166,6 @@ pub fn isolate(cmd: &mut std::process::Command) {
     cmd.env_remove("CARGO_MAKEFLAGS");
 }
 
-pub(crate) fn share(cmd: &mut std::process::Command, home: &Path) {
-    isolate(cmd);
-    #[cfg(unix)]
-    {
-        let fifo = fifo(home);
-        if fifo.exists() {
-            cmd.env("CARGO_MAKEFLAGS", auth(&fifo));
-        }
-    }
-    #[cfg(not(unix))]
-    let _ = home;
-}
-
 pub struct Permit {
     #[cfg(unix)]
     _token: Option<held::Token>,

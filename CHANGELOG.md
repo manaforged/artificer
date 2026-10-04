@@ -15,10 +15,8 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
   seconds for a token takes back any whose holder is gone.
 - The `slim` mode lowers debug info to line tables again. Its flag came
   before the profile's `-C debuginfo`, so rustc used the profile's value.
-- rustc receives Artificer's job token pool, as it receives Cargo's, so
-  its extra threads run only on idle cores. The `threads` mode now uses
-  up to 8 frontend threads instead of a quarter of the cores. With both,
-  a cold build of a 200-crate GUI workspace finished 10% faster.
+- The `threads` mode uses up to 8 frontend threads instead of a quarter
+  of the cores; two threads on a 10-core Mac made a cold build slower.
 - The `threads`, `cranelift`, and `linker` modes take effect again. Their
   compiler probe wrote into a directory it never created, so each probe
   failed and the mode stayed off.
