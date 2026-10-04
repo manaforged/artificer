@@ -85,8 +85,9 @@ directly to see the reason.
 
 `artificer clean` evicts expired units, enforces the store cap, and
 deletes `target/<profile>/{incremental,deps,.fingerprint,build}`. It does
-not delete the store. The sweep mode removes only the
-`incremental/` directories, automatically, during handled builds.
+not delete the store. The sweep mode removes unpublished scratch copies
+during handled builds. It keeps `incremental/`, which holds the
+incremental state of path packages.
 
 ## Exit codes
 
@@ -106,7 +107,7 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | Mode | Fresh default | Effect |
 | --- | --- | --- |
 | enabled | on | Cache supported invocations; off sends shim commands directly to Cargo |
-| sweep | off | Remove Cargo incremental directories during handled builds |
+| sweep | off | Remove unpublished scratch copies during handled builds |
 | cranelift | off | Use Cranelift when rustc accepts it |
 | rmeta | on | Emit metadata-only artifacts for check where possible |
 | slim | off | Use line-table debug info and disable embedded bitcode |

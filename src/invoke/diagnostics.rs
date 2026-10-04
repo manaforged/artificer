@@ -109,7 +109,7 @@ pub(crate) fn run_rustc_inner(
     if !status.success() {
         bail!(failure(pkg, target, cmd, errors));
     }
-    crate::inputs::record(out, pkg.root(), cmd)?;
+    crate::inputs::record(&sess.settings.home, out, pkg.root(), cmd)?;
     Ok(())
 }
 

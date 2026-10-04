@@ -158,3 +158,6 @@ mod targets;
 
 #[path = "cli/store_growth.rs"]
 mod store_growth;
+
+#[path = "cli/edit_loop.rs"]
+mod edit_loop;

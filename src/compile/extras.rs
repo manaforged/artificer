@@ -172,7 +172,7 @@ fn check_one(
     )?;
     if slot.hit() {
         if unit_key::deps_match(&slot.out_dir(), &manifest)
-            && crate::inputs::matches(&slot.out_dir(), pkg.root(), &cmd)
+            && crate::inputs::matches(&sess.settings.home, &slot.out_dir(), pkg.root(), &cmd)
         {
             sess.retain(action.lease()?);
             invoke::replay(sess, pkg, target, &slot.out_dir());

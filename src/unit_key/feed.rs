@@ -2,7 +2,6 @@ use super::{Key, clippy, compile_env, from_registry};
 use crate::cargo::{self, Package};
 use crate::session::Session;
 use crate::{invoke, key, settings};
-use anyhow::Result;
 
 #[derive(Clone, Copy)]
 pub(super) enum Feed<'a> {
@@ -16,34 +15,6 @@ pub(super) struct Fed {
     pub(super) clippy: Option<String>,
     pub(super) dev_deps: bool,
     pub(super) dep_trace: Vec<String>,
-}
-
-pub(super) fn source_key(sess: &Session, pkg: &Package) -> Result<String> {
-    let cached = sess
-        .source_keys
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(&pkg.id)
-        .cloned();
-    if let Some(b) = cached {
-        return Ok(b);
-    }
-    let b = crate::out::timed(&format!("key {}", pkg.name), || {
-        key::lib(
-            pkg.root(),
-            &sess.settings.rustc,
-            &pkg.name,
-            pkg.lib_target()
-                .map(|t| t.edition.as_str())
-                .unwrap_or("2021"),
-            &[&sess.settings.home, &sess.settings.target_dir],
-        )
-    })?;
-    sess.source_keys
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .insert(pkg.id.clone(), b.clone());
-    Ok(b)
 }
 
 #[expect(

@@ -69,7 +69,7 @@ fn clippy(sess: &Session, pkg: &Package) -> Option<String> {
 }
 
 mod feed;
-use feed::{Fed, Feed, feed_inputs, source_key};
+use feed::{Fed, Feed, feed_inputs};
 
 pub(crate) const DEPS_FILE: &str = "deps.blake3";
 
@@ -123,6 +123,7 @@ pub(crate) fn deps_match(out: &Path, manifest: &str) -> bool {
 pub(crate) struct UnitKey {
     pub digest: String,
     pub lineage: Option<String>,
+    pub metadata: String,
 }
 
 #[expect(
@@ -143,7 +144,7 @@ pub(crate) fn unit_digest(
     let content = if from_registry(pkg) {
         None
     } else {
-        Some(source_key(sess, pkg)?)
+        Some(sess.source_key(pkg)?)
     };
     let mut key = Key::new();
     let Fed {
@@ -169,6 +170,7 @@ pub(crate) fn unit_digest(
     );
     let digest = key.digest();
     let mut lineage_digest = None;
+    let mut metadata = digest.clone();
     if pkg.source.is_none() {
         let mut lineage = Key::new();
         feed_inputs(
@@ -184,6 +186,7 @@ pub(crate) fn unit_digest(
             target_tmpdir,
             Feed::Lineage,
         );
+        metadata = lineage.digest();
         lineage.feed(sess.settings.workspace_root.as_os_str().as_encoded_bytes());
         lineage_digest = Some(lineage.digest());
         let source = if from_registry(pkg) {
@@ -255,6 +258,7 @@ pub(crate) fn unit_digest(
     Ok(UnitKey {
         digest,
         lineage: lineage_digest,
+        metadata,
     })
 }
 

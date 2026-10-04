@@ -1,6 +1,6 @@
 use crate::cargo::Package;
 use crate::settings::Settings;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -143,12 +143,40 @@ impl Session {
         {
             return Ok(hash.clone());
         }
-        let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
-        let hash = blake3::hash(&bytes).to_hex()[..32].to_string();
+        let hash = crate::digest::file(Some(&self.settings.home), path)?[..32].to_string();
         self.artifact_hashes
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(path.to_path_buf(), hash.clone());
         Ok(hash)
+    }
+
+    pub(crate) fn source_key(&self, pkg: &Package) -> Result<String> {
+        let cached = self
+            .source_keys
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&pkg.id)
+            .cloned();
+        if let Some(key) = cached {
+            return Ok(key);
+        }
+        let key = crate::out::timed(&format!("key {}", pkg.name), || {
+            crate::key::lib(
+                Some(&self.settings.home),
+                pkg.root(),
+                &self.settings.rustc,
+                &pkg.name,
+                pkg.lib_target()
+                    .map(|t| t.edition.as_str())
+                    .unwrap_or("2021"),
+                &[&self.settings.home, &self.settings.target_dir],
+            )
+        })?;
+        self.source_keys
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(pkg.id.clone(), key.clone());
+        Ok(key)
     }
 }

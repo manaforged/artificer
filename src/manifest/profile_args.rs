@@ -135,15 +135,21 @@ const PROFILE_KEYS: [&str; 14] = [
     "build-override",
 ];
 
-pub fn profile_gate(workspace_root: &Path, name: &str) -> Result<(), String> {
+const INCREMENTAL_ROOT: &str = "dev";
+const INCREMENTAL_KEY: &str = "incremental";
+
+pub fn profile_gate(workspace_root: &Path, name: &str) -> Result<bool, String> {
     let body = cached_body(&workspace_root.join("Cargo.toml"))?;
     let doc: toml::Value =
         toml::from_str(&body).map_err(|e| format!("cannot parse the workspace manifest: {e}"))?;
     let mut cursor = Some(name.to_string());
+    let mut root = name.to_string();
+    let mut incremental = None;
     for _ in 0..8 {
         let Some(profile_name) = cursor.take() else {
             break;
         };
+        root.clone_from(&profile_name);
         if let Some(table) = doc
             .get("profile")
             .and_then(|p| p.get(&profile_name))
@@ -154,6 +160,9 @@ pub fn profile_gate(workspace_root: &Path, name: &str) -> Result<(), String> {
                     return Err(format!("[profile.{profile_name}.{key}] is not modeled"));
                 }
             }
+            if incremental.is_none() {
+                incremental = table.get(INCREMENTAL_KEY).and_then(toml::Value::as_bool);
+            }
             cursor = table
                 .get("inherits")
                 .and_then(toml::Value::as_str)
@@ -163,5 +172,5 @@ pub fn profile_gate(workspace_root: &Path, name: &str) -> Result<(), String> {
             cursor = implicit_parent(&profile_name).map(str::to_string);
         }
     }
-    Ok(())
+    Ok(incremental.unwrap_or(root == INCREMENTAL_ROOT))
 }

@@ -152,7 +152,8 @@ fn compile_test_one(
     invoke::primary_env(&mut cmd, sess, pkg);
     let manifest = unit_key::dep_manifest(sess, node, true, (!is_lib).then_some(pkg.id.as_str()))?;
     if slot.hit() {
-        if !unit_key::deps_match(&out, &manifest) || !crate::inputs::matches(&out, pkg.root(), &cmd)
+        if !unit_key::deps_match(&out, &manifest)
+            || !crate::inputs::matches(&sess.settings.home, &out, pkg.root(), &cmd)
         {
             action.invalidate()?;
         } else if exe.is_file() {

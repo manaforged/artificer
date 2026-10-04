@@ -63,6 +63,12 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 - A store written by an earlier release, whose `CACHEDIR.TAG` holds only the
   signature line, is adopted and its tag updated. Before, the store was
   refused and every build ran Cargo.
+- Path packages compile incrementally where Cargo would, in
+  `target/<profile>/incremental`. `CARGO_INCREMENTAL`, `CARGO_BUILD_INCREMENTAL`,
+  and `profile.<name>.incremental` apply as in Cargo. The `sweep` mode no
+  longer deletes incremental directories during builds.
+- File content digests are kept in the store and reused while a file's
+  length, modification time, inode, and change time stay the same.
 
 ## 0.1.1 - 2026-09-26
 

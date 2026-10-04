@@ -14,22 +14,27 @@ const SKIP: &[&str] = &[
     ".venv",
 ];
 
-pub fn lib(pkg: &Path, rustc: &str, name: &str, edition: &str, skip: &[&Path]) -> Result<String> {
-    content_key(rustc, name, edition, &collect(pkg, pkg, skip)?)
-}
-
-fn content_key(rustc: &str, name: &str, edition: &str, files: &[File]) -> Result<String> {
+pub(crate) fn lib(
+    home: Option<&Path>,
+    pkg: &Path,
+    rustc: &str,
+    name: &str,
+    edition: &str,
+    skip: &[&Path],
+) -> Result<String> {
+    let files = collect(pkg, pkg, skip)?;
+    let mut memo = crate::digest::Memo::new(home);
     let mut hasher = blake3::Hasher::new();
     feed(&mut hasher, rustc.as_bytes());
     feed(&mut hasher, name.as_bytes());
     feed(&mut hasher, edition.as_bytes());
-    for f in files {
+    for f in &files {
         hasher.update(&(f.rel.len() as u64).to_le_bytes());
         hasher.update(f.rel.as_bytes());
         match &f.data {
             Data::File(path) => {
                 hasher.update(b"file");
-                feed(&mut hasher, &fs::read(path)?);
+                feed(&mut hasher, memo.file(path)?.as_bytes());
             }
             Data::Link(target) => {
                 hasher.update(b"link");

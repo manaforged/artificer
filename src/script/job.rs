@@ -4,7 +4,6 @@ use crate::cargo::{Package, Target};
 use crate::platform::env_path;
 use crate::settings::Settings;
 use anyhow::{Context, Result, bail};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -18,6 +17,7 @@ pub(super) struct Job<'a> {
     pub(super) dep_env: &'a [(String, String)],
     pub(super) opt_level: &'a str,
     pub(super) debug: bool,
+    pub(super) source_key: &'a str,
 }
 
 fn feed_sorted(key: &mut Key, mut items: Vec<String>) {
@@ -30,8 +30,9 @@ fn feed_sorted(key: &mut Key, mut items: Vec<String>) {
 impl Job<'_> {
     pub(super) fn digest(&self) -> Result<String> {
         let (pkg, settings) = (self.pkg, self.settings);
+        let home = Some(settings.home.as_path());
         let mut key = Key::new();
-        key.feed(b"build-script-env-v5");
+        key.feed(b"build-script-env-v6");
         key.feed(&[u8::from(settings.release), u8::from(self.debug)]);
         key.feed_str(self.opt_level);
         key.feed_str(&crate::key::rustc_bin());
@@ -57,7 +58,7 @@ impl Job<'_> {
         key.feed(pkg.source.as_deref().unwrap_or("path").as_bytes());
         feed_sorted(&mut key, self.features.to_vec());
         if self.script.src_path.is_file() {
-            key.feed(&fs::read(&self.script.src_path)?);
+            key.feed_str(&crate::digest::file(home, &self.script.src_path)?);
         }
         feed_sorted(
             &mut key,
@@ -67,17 +68,11 @@ impl Job<'_> {
                 .collect(),
         );
         for (_, path) in self.externs {
-            key.feed(blake3::hash(&fs::read(path)?).as_bytes());
+            key.feed_str(&crate::digest::file(home, path)?);
         }
         self.feed_manifest(&mut key);
-        let tree = crate::key::lib(
-            pkg.root(),
-            &settings.rustc,
-            &pkg.name,
-            &self.script.edition,
-            &[&settings.home, &settings.target_dir],
-        )?;
-        key.feed(tree.as_bytes());
+        key.feed_str(&self.script.edition);
+        key.feed(self.source_key.as_bytes());
         Ok(key.digest())
     }
 

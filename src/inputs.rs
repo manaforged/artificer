@@ -20,32 +20,22 @@ fn env_digest(command: &Command, name: &str) -> Option<String> {
     value.map(|value| blake3::hash(value.as_encoded_bytes()).to_hex().to_string())
 }
 
-fn file_digest(path: &Path) -> Result<String> {
-    Ok(
-        blake3::hash(&fs::read(path).with_context(|| format!("read {}", path.display()))?)
-            .to_hex()
-            .to_string(),
-    )
-}
-
-pub(crate) fn matches(out: &Path, root: &Path, command: &Command) -> bool {
+pub(crate) fn matches(home: &Path, out: &Path, root: &Path, command: &Command) -> bool {
     let Ok(bytes) = fs::read(out.join("inputs.json")) else {
         return false;
     };
     let Ok(inputs) = serde_json::from_slice::<Inputs>(&bytes) else {
         return false;
     };
-    inputs
-        .files
+    inputs.files.iter().all(|(path, digest)| {
+        crate::digest::file(Some(home), &root.join(path)).is_ok_and(|current| current == *digest)
+    }) && inputs
+        .environment
         .iter()
-        .all(|(path, digest)| file_digest(&root.join(path)).is_ok_and(|current| current == *digest))
-        && inputs
-            .environment
-            .iter()
-            .all(|(name, digest)| env_digest(command, name) == *digest)
+        .all(|(name, digest)| env_digest(command, name) == *digest)
 }
 
-pub(crate) fn record(out: &Path, root: &Path, command: &Command) -> Result<()> {
+pub(crate) fn record(home: &Path, out: &Path, root: &Path, command: &Command) -> Result<()> {
     let mut inputs = Inputs {
         files: Vec::new(),
         environment: Vec::new(),
@@ -66,7 +56,7 @@ pub(crate) fn record(out: &Path, root: &Path, command: &Command) -> Result<()> {
             .context("invalid compiler dependency rule")?;
         for name in paths(sources) {
             let source = command.get_current_dir().unwrap_or(root).join(name);
-            let digest = file_digest(&source)?;
+            let digest = crate::digest::file(Some(home), &source)?;
             let name = source.strip_prefix(root).unwrap_or(&source).to_path_buf();
             inputs.files.push((name, digest));
         }

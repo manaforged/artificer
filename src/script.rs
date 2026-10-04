@@ -32,6 +32,7 @@ pub fn ensure(
     let Some(script) = pkg.script_target() else {
         bail!("ensure called without custom-build target");
     };
+    let source_key = sess.source_key(pkg)?;
     let job = Job {
         pkg,
         settings,
@@ -44,6 +45,7 @@ pub fn ensure(
         debug: settings
             .profile_value(pkg, "debuginfo")
             .is_some_and(|v| v != "0" && v != "none"),
+        source_key: &source_key,
     };
     let digest = job.digest()?;
     if std::env::var("ARTIFICER_DEBUG_KEY").is_ok_and(|w| w == pkg.name) {
@@ -93,7 +95,9 @@ fn record(action: &Action, job: &Job, output: &str) -> Result<()> {
 fn restorable(action: &Action, job: &Job, rustc_cmd: &std::process::Command) -> Option<String> {
     let pkg = job.pkg;
     let dir = &action.slot.dir;
-    if !action.hit() || !crate::inputs::matches(&dir.join("bin"), pkg.root(), rustc_cmd) {
+    if !action.hit()
+        || !crate::inputs::matches(&job.settings.home, &dir.join("bin"), pkg.root(), rustc_cmd)
+    {
         return None;
     }
     let output = fs::read_to_string(dir.join("output")).ok()?;

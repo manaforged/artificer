@@ -93,6 +93,9 @@ pub(crate) fn rustc_base(
     cmd.arg("--remap-path-prefix")
         .arg(format!("{}=.", pkg.root().display()));
     cmd.arg("--out-dir").arg(out);
+    if let Some(dir) = sess.settings.incremental_dir(pkg) {
+        cmd.arg("-C").arg(format!("incremental={}", dir.display()));
+    }
     if pkg.source.is_some() {
         cmd.arg("--cap-lints").arg("allow");
     }

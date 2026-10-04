@@ -134,7 +134,8 @@ fn compile_exe(
         pkg.lib_target().is_some().then_some(pkg.id.as_str()),
     )?;
     if slot.hit() {
-        if !unit_key::deps_match(&out, &manifest) || !crate::inputs::matches(&out, pkg.root(), &cmd)
+        if !unit_key::deps_match(&out, &manifest)
+            || !crate::inputs::matches(&sess.settings.home, &out, pkg.root(), &cmd)
         {
             action.invalidate()?;
         } else if exe.is_file() {

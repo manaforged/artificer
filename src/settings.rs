@@ -26,6 +26,7 @@ pub struct Settings {
     pub overrides: Overrides,
     pub lto: bool,
     pub release: bool,
+    pub incremental: bool,
     pub mods: Mods,
     lints: HashMap<String, Vec<String>>,
 }
@@ -34,6 +35,11 @@ impl Settings {
     pub(crate) fn profile_dir(&self) -> PathBuf {
         self.target_dir
             .join(if self.release { "release" } else { "debug" })
+    }
+
+    pub(crate) fn incremental_dir(&self, pkg: &Package) -> Option<PathBuf> {
+        (self.incremental && pkg.source.is_none())
+            .then(|| self.profile_dir().join(crate::sweep::INCREMENTAL_DIR))
     }
 
     pub(crate) fn profile_value<'a>(&'a self, pkg: &Package, key: &str) -> Option<&'a str> {
@@ -111,8 +117,9 @@ impl Settings {
             Vec::new()
         };
         let profile = crate::manifest::profile(ws, name);
-        crate::manifest::profile_gate(ws, name)
+        let profile_incremental = crate::manifest::profile_gate(ws, name)
             .map_err(|e| anyhow::anyhow!("artificer cannot model this workspace: {e}"))?;
+        let incremental = incremental(profile_incremental);
         let mut lints = HashMap::new();
         for pkg in packages.iter().filter(|p| p.source.is_none()) {
             let root = crate::manifest::package_root(&pkg.manifest_path);
@@ -143,6 +150,7 @@ impl Settings {
             overrides,
             lto,
             release,
+            incremental,
             mods,
             lints,
         })
@@ -180,6 +188,18 @@ impl Settings {
         cmd.current_dir(&self.toolchain_dir);
         cmd
     }
+}
+
+const INCREMENTAL_ENV: &str = "CARGO_INCREMENTAL";
+const BUILD_INCREMENTAL_ENV: &str = "CARGO_BUILD_INCREMENTAL";
+
+pub(crate) fn incremental(profile: bool) -> bool {
+    if let Some(value) = std::env::var_os(INCREMENTAL_ENV) {
+        return value == "1";
+    }
+    std::env::var_os(BUILD_INCREMENTAL_ENV)
+        .and_then(|value| value.to_string_lossy().trim().parse::<bool>().ok())
+        .unwrap_or(profile)
 }
 
 #[must_use]

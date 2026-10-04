@@ -8,6 +8,7 @@ mod build;
 mod cargo;
 mod compile;
 mod config;
+mod digest;
 mod features;
 mod flags;
 mod gate;

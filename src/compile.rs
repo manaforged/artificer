@@ -71,6 +71,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
         false,
     )?;
     let digest = keyed.digest;
+    let metadata = keyed.metadata;
     let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &digest)?
         .lineage(keyed.lineage);
     let slot = &action.slot;
@@ -110,7 +111,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
         script.as_ref(),
         lto_ok,
     );
-    cmd.arg("-C").arg(format!("metadata={digest}"));
+    cmd.arg("-C").arg(format!("metadata={metadata}"));
     cmd.arg("-C").arg(format!("extra-filename=-{digest}"));
     invoke::add_externs(
         &mut cmd,
@@ -131,7 +132,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
     let mut hit = slot.hit();
     if hit
         && (!unit_key::deps_match(&out, &manifest)
-            || !crate::inputs::matches(&out, pkg.root(), &cmd))
+            || !crate::inputs::matches(&sess.settings.home, &out, pkg.root(), &cmd))
     {
         action.invalidate()?;
         hit = false;
