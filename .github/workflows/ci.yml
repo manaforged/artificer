@@ -81,7 +81,7 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Package the crate
-        run: cargo package --locked
+        run: cargo package --locked --target-dir "${CARGO_TARGET_DIR:-target}/package-check"
 
   dependencies:
     name: Dependency policy
