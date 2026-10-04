@@ -92,3 +92,31 @@ fn a_moved_checkout_reuses_a_build_script_whose_objects_name_the_old_path() {
     build(&home, &moved, &tmp.path().join("t2"), &[]);
     assert_eq!(fs::read_to_string(tmp.path().join("runs")).unwrap(), "x");
 }
+
+#[test]
+fn a_build_fetches_missing_units_from_the_remote_without_a_pull() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("project");
+    script_project(&root, "fn main() {}\n");
+    let builder = tmp.path().join("builder");
+    build(&builder, &root, &tmp.path().join("builder-target"), &[]);
+    let fresh = tmp.path().join("fresh");
+    let claim = artificer(&fresh, &root)
+        .args(["remote", "off"])
+        .output()
+        .unwrap();
+    assert!(claim.status.success());
+    fs::write(fresh.join("pull.stamp"), "").unwrap();
+    let out = artificer(&fresh, &root)
+        .arg("build")
+        .env("ARTIFICER_REMOTE", &builder)
+        .env("CARGO_TARGET_DIR", tmp.path().join("fresh-target"))
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(misses(&fresh, &root), 0);
+}

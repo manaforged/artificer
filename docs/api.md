@@ -38,7 +38,7 @@ real Cargo. Named `artificer`, it accepts the commands below.
 | `artificer export DIR [--days N] [--max-gb N]` | Copy recently used units to a directory |
 | `artificer import DIR` | Add missing units from an exported directory |
 | `artificer remote` | Show the remote store |
-| `artificer remote set LOCATION` | Set the remote store: `HOST:/ABSOLUTE/PATH` over SSH, or an absolute directory |
+| `artificer remote set LOCATION` | Set the remote store: `HOST:/ABSOLUTE/PATH` over SSH, or an absolute directory. A build then takes each unit it misses from the remote store before compiling it |
 | `artificer remote off` | Clear the remote store |
 | `artificer pull` | Add missing complete units from the remote store |
 | `artificer mods` | List compile modes |

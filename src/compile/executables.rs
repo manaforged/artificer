@@ -103,7 +103,7 @@ impl Exe<'_> {
         cmd: &Command,
     ) -> Result<bool> {
         let (sess, pkg, out) = (self.sess, self.pkg, &action.out);
-        if !action.slot.hit() {
+        if !action.hit() {
             return Ok(false);
         }
         if !unit_key::deps_match(out, manifest)

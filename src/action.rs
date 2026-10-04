@@ -79,6 +79,7 @@ pub struct Action {
     lineage: Option<String>,
     lease: Arc<std::fs::File>,
     writing: std::cell::Cell<bool>,
+    fetched: std::cell::Cell<bool>,
     _hold: Hold,
 }
 
@@ -97,6 +98,7 @@ impl Action {
             lineage: None,
             lease,
             writing: std::cell::Cell::new(false),
+            fetched: std::cell::Cell::new(false),
             _hold: hold,
         })
     }
@@ -109,7 +111,21 @@ impl Action {
 
     #[must_use]
     pub fn hit(&self) -> bool {
+        if self.slot.hit() {
+            return true;
+        }
+        if !self.fetched.replace(true) && self.fetch().unwrap_or(false) {
+            return true;
+        }
         self.slot.hit()
+    }
+
+    fn fetch(&self) -> Result<bool> {
+        if crate::remote::fetch(&self.home, &self.name, &self.slot)? {
+            self.finish()?;
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     pub(crate) fn prepare(&self) -> Result<()> {

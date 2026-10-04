@@ -139,7 +139,7 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | ARTIFICER_NOSERVE | Force the in-process build path |
 | ARTIFICER_NO_TREE | Skip the per-invocation feature probe; every handled command falls back to Cargo |
 | ARTIFICER_STORE_CAP_GB | Store size limit in GiB. Unset, the cap is 15% of the volume (at least 8 GiB). A value above that share is clamped to it. |
-| ARTIFICER_REMOTE | Remote store for `artificer pull`; overrides `artificer remote set`. Empty turns it off |
+| ARTIFICER_REMOTE | Remote store for builds and `artificer pull`; overrides `artificer remote set`. Empty turns it off |
 | ARTIFICER_JOBS | Maximum Artificer compile workers in one process |
 | CARGO_BUILD_JOBS | Cargo's job cap; used when ARTIFICER_JOBS is unset |
 | ARTIFICER_CODEGEN=llvm or off | Disable automatic Cranelift selection when its mode is on |

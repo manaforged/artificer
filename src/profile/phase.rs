@@ -36,6 +36,7 @@ pub enum WrapperPhase {
 pub enum UnitPhase {
     Key,
     Permit,
+    Fetch,
     Publish,
 }
 
@@ -116,6 +117,7 @@ impl UnitPhase {
         match self {
             Self::Key => "key",
             Self::Permit => "permit",
+            Self::Fetch => "fetch",
             Self::Publish => "publish",
         }
     }

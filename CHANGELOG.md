@@ -9,6 +9,10 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- With a remote store set, a build takes each unit it misses from the
+  remote store before compiling it: a copy from a directory, or one rsync
+  over a shared SSH connection. A cold build no longer waits for the
+  background pull. Profiles show the time as `fetch`.
 - A build killed while it held job tokens no longer stalls every other
   build on the machine. Each held token is recorded under a lock the
   system releases when its process dies, and a build that waits two

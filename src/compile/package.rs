@@ -166,7 +166,7 @@ impl<'u> PackageUnit<'u> {
         early: Option<&invoke::Early>,
     ) -> Result<RustcOutcome> {
         let (sess, pkg, out) = (self.sess, self.pkg, &action.out);
-        if action.slot.hit() {
+        if action.hit() {
             if unit_key::deps_match(out, manifest)
                 && crate::inputs::matches(&sess.settings.home, out, pkg.root(), cmd)
             {

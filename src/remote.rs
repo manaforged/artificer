@@ -121,5 +121,7 @@ pub(crate) fn pull_due(home: &Path) {
     }
 }
 
+mod fetch;
 mod pull;
+pub(crate) use fetch::fetch;
 pub use pull::{pull, spawn_pull};

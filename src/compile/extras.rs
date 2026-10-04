@@ -194,7 +194,7 @@ fn settle(
 ) -> Result<()> {
     let (pkg, target) = (unit.pkg, unit.target);
     let slot = &action.slot;
-    if slot.hit() {
+    if action.hit() {
         if unit_key::deps_match(&slot.out_dir(), manifest)
             && crate::inputs::matches(&sess.settings.home, &slot.out_dir(), pkg.root(), &cmd)
         {
