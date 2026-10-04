@@ -1,5 +1,7 @@
 use super::*;
 
+pub(super) const NO_HARNESS: &str = "-no-harness";
+
 pub struct TestBin {
     pub exe: PathBuf,
     pub target: cargo::Target,
@@ -84,6 +86,132 @@ pub fn compile_tests(
     Ok(bins)
 }
 
+struct TestUnit<'u> {
+    sess: &'u Session,
+    pkg: &'u Package,
+    node: &'u cargo::Node,
+    target: &'u cargo::Target,
+    is_lib: bool,
+    harness: bool,
+    target_tmpdir: bool,
+}
+
+fn test_kind(
+    label: &str,
+    crate_name: &str,
+    harness: bool,
+    bin_exe: &[(String, PathBuf)],
+) -> String {
+    let marker = if harness { "" } else { NO_HARNESS };
+    let exes: Vec<String> = bin_exe
+        .iter()
+        .map(|(k, v)| format!("{k}={}", v.display()))
+        .collect();
+    format!("test-{label}-{crate_name}{marker}-{}", exes.join(","))
+}
+
+impl TestUnit<'_> {
+    fn command(
+        &self,
+        bin_exe: &[(String, PathBuf)],
+        out: &Path,
+        script: Option<&Script>,
+    ) -> Result<Command> {
+        let (sess, pkg, node) = (self.sess, self.pkg, self.node);
+        let mut cmd = sess.settings.rustc_cmd(pkg);
+        if self.harness {
+            cmd.args(["--test", "--emit=dep-info,link", "--cfg", "test"]);
+        } else {
+            cmd.args([
+                "--crate-type",
+                "bin",
+                "--emit=dep-info,link",
+                "--cfg",
+                "test",
+            ]);
+        }
+        cmd.envs(bin_exe.iter().map(|(name, path)| (name, path)));
+        invoke::set_target_tmpdir(&mut cmd, sess, self.target_tmpdir);
+        let mut cmd = invoke::rustc_base(
+            cmd,
+            sess,
+            pkg,
+            self.target,
+            true,
+            &node.features,
+            out,
+            script,
+            true,
+        );
+        cmd.args(["-C", "panic=unwind"]);
+        invoke::add_externs(&mut cmd, sess, node, invoke::ExternSet::Test, false)?;
+        invoke::add_natives(&mut cmd, sess, &pkg.id, true);
+        if !self.is_lib
+            && let Some(art) = sess.get(&pkg.id)
+        {
+            cmd.arg("--extern")
+                .arg(format!("{}={}", art.crate_name, art.path.display()));
+        }
+        cmd.arg(&self.target.src_path);
+        invoke::primary_env(&mut cmd, sess, pkg);
+        Ok(cmd)
+    }
+
+    fn bin(&self, exe: PathBuf, rustc: RustcOutcome) -> TestBin {
+        TestBin {
+            exe,
+            target: self.target.clone(),
+            rustc,
+        }
+    }
+
+    fn compile(
+        &self,
+        action: &action::Action,
+        cmd: &mut Command,
+        manifest: &str,
+        exe: PathBuf,
+    ) -> Result<TestBin> {
+        let (sess, pkg, out) = (self.sess, self.pkg, &action.out);
+        action.prepare()?;
+        std::fs::create_dir_all(out)?;
+        invoke::note_rustc(&sess.settings.home);
+        invoke::run_rustc(cmd, sess, pkg, self.target, out)?;
+        std::fs::write(out.join(unit_key::DEPS_FILE), manifest)?;
+        if !exe.is_file() {
+            bail!("no test exe {} in {}", exe.display(), out.display());
+        }
+        action.finish()?;
+        sess.retain(action.lease()?);
+        Ok(self.bin(exe, RustcOutcome::Ran))
+    }
+
+    fn restore(
+        &self,
+        action: &action::Action,
+        exe: &Path,
+        manifest: &str,
+        cmd: &Command,
+    ) -> Result<Option<TestBin>> {
+        let (sess, pkg) = (self.sess, self.pkg);
+        if !action.slot.hit() {
+            return Ok(None);
+        }
+        if !unit_key::deps_match(&action.out, manifest)
+            || !crate::inputs::matches(&sess.settings.home, &action.out, pkg.root(), cmd)
+        {
+            action.invalidate()?;
+            return Ok(None);
+        }
+        if !exe.is_file() {
+            return Ok(None);
+        }
+        sess.retain(action.lease()?);
+        invoke::replay(sess, pkg, self.target, &action.out);
+        Ok(Some(self.bin(exe.to_path_buf(), RustcOutcome::Restored)))
+    }
+}
+
 fn compile_test_one(
     sess: &Session,
     pkg: &Package,
@@ -93,93 +221,41 @@ fn compile_test_one(
     is_lib: bool,
     bin_exe: &[(String, PathBuf)],
 ) -> Result<TestBin> {
+    let unit = TestUnit {
+        sess,
+        pkg,
+        node,
+        target,
+        is_lib,
+        harness: crate::manifest::harness(&pkg.manifest_path, target),
+        target_tmpdir: invoke::uses_target_tmpdir(target),
+    };
     let crate_name = target.name.replace('-', "_");
-    let target_tmpdir = invoke::uses_target_tmpdir(target);
     let script = ensure_script(sess, pkg, node)?;
     let stamp = script.as_ref().map(|s| s.stamp.clone());
     let keyed = unit_key::unit_digest(
         sess,
         pkg,
         node,
-        &format!(
-            "test-{label}-{crate_name}-{}",
-            bin_exe
-                .iter()
-                .map(|(k, v)| format!("{k}={}", v.display()))
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
+        &test_kind(label, &crate_name, unit.harness, bin_exe),
         &node.features,
         &[],
         true,
         stamp.as_deref(),
-        target_tmpdir,
+        unit.target_tmpdir,
     )?;
-    let digest = keyed.digest;
-    let action = action::Action::begin(&sess.settings.home, action::Kind::Test, &digest)?
+    let action = action::Action::begin(&sess.settings.home, action::Kind::Test, &keyed.digest)?
         .lineage(keyed.lineage);
-    let slot = &action.slot;
     let out = action.out.clone();
     let exe = out.join(if cfg!(windows) {
         format!("{crate_name}.exe")
     } else {
         crate_name.clone()
     });
-
-    let mut cmd = sess.settings.rustc_cmd(pkg);
-    cmd.args(["--test", "--emit=dep-info,link", "--cfg", "test"]);
-    cmd.envs(bin_exe.iter().map(|(name, path)| (name, path)));
-    invoke::set_target_tmpdir(&mut cmd, sess, target_tmpdir);
-    let mut cmd = invoke::rustc_base(
-        cmd,
-        sess,
-        pkg,
-        target,
-        true,
-        &node.features,
-        &out,
-        script.as_ref(),
-        true,
-    );
-    cmd.args(["-C", "panic=unwind"]);
-    invoke::add_externs(&mut cmd, sess, node, invoke::ExternSet::Test, false)?;
-    invoke::add_natives(&mut cmd, sess, &pkg.id, true);
-    if !is_lib && let Some(art) = sess.get(&pkg.id) {
-        cmd.arg("--extern")
-            .arg(format!("{}={}", art.crate_name, art.path.display()));
-    }
-    cmd.arg(&target.src_path);
-    invoke::primary_env(&mut cmd, sess, pkg);
+    let mut cmd = unit.command(bin_exe, &out, script.as_ref())?;
     let manifest = unit_key::dep_manifest(sess, node, true, (!is_lib).then_some(pkg.id.as_str()))?;
-    if slot.hit() {
-        if !unit_key::deps_match(&out, &manifest)
-            || !crate::inputs::matches(&sess.settings.home, &out, pkg.root(), &cmd)
-        {
-            action.invalidate()?;
-        } else if exe.is_file() {
-            sess.retain(action.lease()?);
-            invoke::replay(sess, pkg, target, &out);
-            return Ok(TestBin {
-                exe,
-                target: target.clone(),
-                rustc: RustcOutcome::Restored,
-            });
-        }
+    if let Some(restored) = unit.restore(&action, &exe, &manifest, &cmd)? {
+        return Ok(restored);
     }
-
-    action.prepare()?;
-    std::fs::create_dir_all(&out)?;
-    invoke::note_rustc(&sess.settings.home);
-    invoke::run_rustc(&mut cmd, sess, pkg, target, &out)?;
-    std::fs::write(out.join(unit_key::DEPS_FILE), &manifest)?;
-    if !exe.is_file() {
-        bail!("no test exe {crate_name} in {}", out.display());
-    }
-    action.finish()?;
-    sess.retain(action.lease()?);
-    Ok(TestBin {
-        exe,
-        target: target.clone(),
-        rustc: RustcOutcome::Ran,
-    })
+    unit.compile(&action, &mut cmd, &manifest, exe)
 }

@@ -117,7 +117,13 @@ fn check_one(
     };
     let crate_name = target.name.replace('-', "_");
     let target_tmpdir = invoke::uses_target_tmpdir(target);
-    let kind = format!("{}{crate_name}", scan.prefix());
+    let harness = scan.harness() && crate::manifest::harness(&pkg.manifest_path, target);
+    let marker = if scan.harness() && !harness {
+        testing::NO_HARNESS
+    } else {
+        ""
+    };
+    let kind = format!("{}{crate_name}{marker}", scan.prefix());
     let script = ensure_script(sess, pkg, node)?;
     let stamp = script.as_ref().map(|s| s.stamp.clone());
     let keyed = unit_key::unit_digest(
@@ -135,8 +141,10 @@ fn check_one(
         .lineage(keyed.lineage);
     let mut cmd = sess.settings.rustc_cmd(pkg);
     cmd.arg("--emit=dep-info,metadata");
-    if scan.harness() {
+    if harness {
         cmd.arg("--test");
+    } else if scan.harness() {
+        cmd.args(["--cfg", "test"]);
     }
     cmd.envs(bin_exe.iter().map(|(name, path)| (name, path)));
     invoke::set_target_tmpdir(&mut cmd, sess, target_tmpdir);

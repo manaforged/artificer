@@ -141,6 +141,9 @@ mod dispatch;
 #[path = "cli/profile.rs"]
 mod profile;
 
+#[path = "cli/harness.rs"]
+mod harness;
+
 #[path = "cli/shim.rs"]
 mod shim_dispatch;
 

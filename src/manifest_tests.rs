@@ -184,3 +184,28 @@ fn profile_booleans_map_to_rustc_values() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn a_test_target_with_harness_false_reads_as_harness_free() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest = dir.path().join("Cargo.toml");
+    std::fs::write(
+        &manifest,
+        "[package]\nname = \"h\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[[test]]\nname = \"custom\"\nharness = false\n",
+    )
+    .unwrap();
+    let target = |name: &str, kind: &str| crate::cargo::Target {
+        name: name.to_string(),
+        kind: vec![kind.to_string()],
+        crate_types: vec!["bin".to_string()],
+        src_path: dir.path().join("tests/custom.rs"),
+        edition: "2021".to_string(),
+        required_features: Vec::new(),
+        test: true,
+        doc: false,
+        doctest: false,
+    };
+    assert!(!harness(&manifest, &target("custom", "test")));
+    assert!(harness(&manifest, &target("other", "test")));
+    assert!(harness(&manifest, &target("h", "lib")));
+}

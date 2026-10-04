@@ -9,6 +9,10 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- A test target with `harness = false` runs its own `main` again. Artificer
+  had compiled it with the libtest harness, so it reported `running 0
+  tests` and passed. `cargo check --tests` leaves out its `#[test]`
+  functions, as Cargo does.
 - Every `check`, `build`, `test`, `run`, and `warm` command records a build
   profile. `artificer profile` shows
   where the newest build spent its time: the critical path, idle cores,

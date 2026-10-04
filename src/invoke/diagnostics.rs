@@ -1,37 +1,11 @@
 use super::*;
+use crate::cargo::TargetKind;
 
 pub(crate) const DIAGNOSTICS: &str = "diagnostics";
 const ABORTING: &str = "aborting due to";
 const ERROR_LEVELS: [&str; 2] = ["error", "error: internal compiler error"];
 const PATH_MARKERS: [&str; 2] = ["--> ", "::: "];
 const REMAPPED: [&str; 2] = ["./", ".\\"];
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum TargetKind {
-    Lib,
-    Bin,
-    Test,
-    Example,
-    Bench,
-    BuildScript,
-}
-
-impl TargetKind {
-    fn of(target: &cargo::Target) -> Self {
-        let kinds = target.kind.iter().map(String::as_str);
-        kinds
-            .filter_map(|kind| match kind {
-                "bin" => Some(Self::Bin),
-                "test" => Some(Self::Test),
-                "example" => Some(Self::Example),
-                "bench" => Some(Self::Bench),
-                "custom-build" => Some(Self::BuildScript),
-                _ => None,
-            })
-            .next()
-            .unwrap_or(Self::Lib)
-    }
-}
 
 fn unit_label(target: &cargo::Target, harness: bool) -> String {
     let name = &target.name;

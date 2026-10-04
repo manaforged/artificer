@@ -373,6 +373,9 @@ pub use graph::{
 mod metadata;
 pub use metadata::metadata_extra;
 
+mod kind;
+pub(crate) use kind::TargetKind;
+
 pub(crate) use cache::meta_key;
 
 #[cfg(test)]
