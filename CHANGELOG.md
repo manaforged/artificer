@@ -9,6 +9,11 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- A library is keyed on the build-script run it compiles against. Two
+  builds whose script runs differ, for example in `RUSTDOC`, no longer
+  rebuild one library unit in turn, which sent a build to Cargo with
+  `unit ... is in use` while the other build held the unit. Libraries of
+  packages with build scripts compile once after updating.
 - `CARGO_PROFILE_<NAME>_<KEY>` environment variables for the profile keys
   Artificer applies, such as `CARGO_PROFILE_DEV_DEBUG=0`, go through the
   cache instead of running Cargo. They override the manifest's profile, as
