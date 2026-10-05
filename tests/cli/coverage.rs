@@ -223,3 +223,33 @@ fn dependencies_get_line_table_debug_info_and_workspace_crates_keep_theirs() {
     assert!(off.status.success());
     assert_eq!(debuginfo(), (full.clone(), full));
 }
+
+#[test]
+fn rustc_runs_from_the_toolchain_sysroot_not_through_a_proxy() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("pkg");
+    write_pkg(&root);
+    let sysroot = std::process::Command::new("rustc")
+        .args(["--print", "sysroot"])
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert!(sysroot.status.success());
+    let exe = Path::new(String::from_utf8_lossy(&sysroot.stdout).trim())
+        .join("bin")
+        .join(format!("rustc{}", std::env::consts::EXE_SUFFIX));
+    let out = artificer(&tmp.path().join("home"), &root)
+        .env("ARTIFICER_TRACE", "1")
+        .env_remove("RUSTC")
+        .arg("build")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    let command = stderr
+        .lines()
+        .find(|line| line.contains("\"--crate-name\" \"filters\""))
+        .unwrap_or_else(|| panic!("no rustc command: {stderr}"));
+    let program = format!("{:?}", exe.display().to_string());
+    assert!(command.contains(&program), "{program} not in {command}");
+}

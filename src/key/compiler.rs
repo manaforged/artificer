@@ -127,6 +127,30 @@ pub fn rustc_bin() -> String {
         .unwrap_or_else(|| "rustc".to_string())
 }
 
+pub(crate) fn rustc_exe(home: &Path, dir: &Path) -> String {
+    let named = rustc_bin();
+    if std::env::var_os("RUSTC").is_some_and(|v| !v.is_empty()) {
+        return named;
+    }
+    let key = format!("{}|{named}", toolchain_key(dir));
+    probe_memo(home, "rustc-exe", &key, || {
+        sysroot_rustc(&named, dir).context("rustc --print sysroot")
+    })
+    .unwrap_or(named)
+}
+
+fn sysroot_rustc(named: &str, dir: &Path) -> Option<String> {
+    let mut cmd = Command::new(named);
+    cmd.args(["--print", "sysroot"]).current_dir(dir);
+    crate::jobs::isolate(&mut cmd);
+    let out = cmd.output().ok().filter(|out| out.status.success())?;
+    let sysroot = PathBuf::from(String::from_utf8(out.stdout).ok()?.trim());
+    let exe = sysroot
+        .join("bin")
+        .join(format!("rustc{}", std::env::consts::EXE_SUFFIX));
+    exe.is_file().then(|| exe.to_string_lossy().into_owned())
+}
+
 pub fn rustc_version_in(home: &Path, dir: &Path) -> Result<String> {
     static CACHE: std::sync::LazyLock<
         std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, String)>>,

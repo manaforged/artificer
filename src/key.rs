@@ -197,6 +197,6 @@ mod compiler;
 #[cfg(test)]
 pub(crate) use compiler::file_identity;
 pub(crate) use compiler::{
-    explicit_rustc_identity, probe_memo, rustc_print_cfg_with_flags, toolchain_key,
+    explicit_rustc_identity, probe_memo, rustc_exe, rustc_print_cfg_with_flags, toolchain_key,
 };
 pub use compiler::{rustc_bin, rustc_host, rustc_print_cfg, rustc_version, rustc_version_in};

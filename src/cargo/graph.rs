@@ -60,7 +60,7 @@ pub fn build_only(
     }
     must_link(meta, order)
         .into_iter()
-        .filter(|id| !runtime.contains(id))
+        .filter(|id| !runtime.contains(id) || package(meta, id).is_ok_and(Package::is_proc_macro))
         .collect()
 }
 

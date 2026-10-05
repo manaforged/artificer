@@ -93,7 +93,11 @@ impl<'u> PackageUnit<'u> {
         let link = self.shape.links_output();
         let mut cmd = sess.settings.rustc_cmd(pkg);
         if link {
-            cmd.arg("--emit=dep-info,metadata,link");
+            cmd.arg(if self.proc_macro {
+                "--emit=dep-info,link"
+            } else {
+                "--emit=dep-info,metadata,link"
+            });
             for kind in &self.types {
                 cmd.arg("--crate-type").arg(kind);
             }

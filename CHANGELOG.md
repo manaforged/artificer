@@ -9,6 +9,12 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- rustc runs straight from the toolchain's sysroot, as with Cargo,
+  instead of through the rustup proxy on every compile. With `RUSTC` set,
+  that program runs as given.
+- A proc-macro crate compiles with Cargo's `build-override` defaults, as
+  Cargo does: no debug info and no separate metadata file. It had used
+  the build's profile, which put full debug info into every derive crate.
 - A new `slim-deps` mode, on by default, compiles crates.io and git
   dependencies with line-table debug info. Workspace and path crates keep
   the profile's debug info, so they debug as before, and backtraces keep

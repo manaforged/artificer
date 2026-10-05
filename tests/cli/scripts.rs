@@ -216,3 +216,54 @@ fn script_runs_with_the_same_output_keep_their_own_library_units() {
     let again = build("rustdoc-a");
     assert!(again.contains(" 0 rustc"), "{again}");
 }
+
+#[test]
+fn a_proc_macro_compiles_with_the_build_override_defaults() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("ws");
+    write(
+        &ws.join("Cargo.toml"),
+        "[workspace]\nresolver = \"2\"\nmembers = [\"answer\", \"app\"]\n",
+    );
+    write(
+        &ws.join("answer/Cargo.toml"),
+        "[package]\nname = \"answer\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\nproc-macro = true\n",
+    );
+    write(
+        &ws.join("answer/src/lib.rs"),
+        "use proc_macro::TokenStream;\n#[proc_macro]\npub fn answer(_: TokenStream) -> TokenStream { \"42\".parse().unwrap() }\n",
+    );
+    write(
+        &ws.join("app/Cargo.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nanswer = { path = \"../answer\" }\n",
+    );
+    write(
+        &ws.join("app/src/main.rs"),
+        "fn main() { println!(\"{}\", answer::answer!()); }\n",
+    );
+    let home = tmp.path().join("home");
+    let out = artificer(&home, &ws)
+        .env("ARTIFICER_TRACE", "1")
+        .args(["run", "-q", "-p", "app"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "42");
+    let command = |name: &str| {
+        stderr
+            .lines()
+            .find(|line| line.contains(&format!("\"--crate-name\" \"{name}\"")))
+            .unwrap_or_else(|| panic!("no rustc command for {name}: {stderr}"))
+            .to_string()
+    };
+    let derive = command("answer");
+    assert!(derive.contains("\"debuginfo=0\""), "{derive}");
+    assert!(derive.contains("\"--emit=dep-info,link\""), "{derive}");
+    assert!(!derive.contains("split-debuginfo"), "{derive}");
+    assert!(
+        command("app").contains("\"debuginfo=2\""),
+        "{}",
+        command("app")
+    );
+}
