@@ -120,12 +120,13 @@ fn gc_skips_held_unit() -> Result<()> {
     assert!(dir.exists());
     drop(guard);
     let released = std::time::Instant::now();
-    while try_hold(tmp.path(), "u-held")?.is_none() {
-        assert!(released.elapsed() < Duration::from_secs(5));
+    while gc_units(tmp.path(), Duration::ZERO)?.0 == 0 {
+        assert!(
+            released.elapsed() < Duration::from_secs(5),
+            "a released unit was never evicted"
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
-    let (gone, _) = gc_units(tmp.path(), Duration::ZERO)?;
-    assert_eq!(gone, 1);
     assert!(!dir.exists());
     Ok(())
 }
