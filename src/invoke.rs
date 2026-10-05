@@ -36,9 +36,6 @@ pub(crate) fn style(sess: &Session, cmd: &mut Command, link: bool, pkg: &Package
     for a in crate::unit_key::early_args(sess) {
         cmd.arg(a);
     }
-    if settings.mods.slim && !cfg!(target_env = "msvc") {
-        cmd.arg("-C").arg("split-debuginfo=off");
-    }
     for a in check_cfg_args(pkg) {
         cmd.arg("--check-cfg").arg(a);
     }
@@ -46,7 +43,7 @@ pub(crate) fn style(sess: &Session, cmd: &mut Command, link: bool, pkg: &Package
         cmd.arg(a);
     }
     if link {
-        for a in &settings.linker {
+        for a in &settings.host_linker {
             cmd.arg(a);
         }
     }
@@ -81,9 +78,6 @@ pub(crate) fn rustc_base(
     let crate_name = target.name.replace('-', "_");
     cmd.args(["--crate-name", &crate_name, "--edition", &target.edition]);
     style(sess, &mut cmd, link, pkg, lto_ok);
-    for a in &sess.settings.codegen {
-        cmd.arg(a);
-    }
     let mut remaps = [
         (pkg.root().to_path_buf(), "."),
         (env_path(&sess.settings.home), crate::inputs::STORE_TOKEN),

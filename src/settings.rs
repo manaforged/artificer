@@ -19,8 +19,6 @@ pub struct Settings {
     pub wrapper_local: Option<String>,
     pub members: HashSet<String>,
     pub rustflags: Vec<String>,
-    pub codegen: Vec<String>,
-    pub linker: Vec<String>,
     pub host_linker: Vec<String>,
     pub runner: Option<Vec<String>>,
     pub env: Vec<(String, String)>,
@@ -89,34 +87,6 @@ fn target_flags(
             .unwrap_or_default(),
         runner: tools.runner,
     })
-}
-
-fn mod_flags(
-    mods: &crate::mods::Mods,
-    release: bool,
-    home: &Path,
-    rustc: &str,
-    dir: &Path,
-    host_linker: &[String],
-) -> (Vec<String>, Vec<String>, Vec<String>) {
-    let codegen = if mods.cranelift && !release {
-        flags::codegen(home, rustc, dir)
-    } else {
-        Vec::new()
-    };
-    let linker = if !host_linker.is_empty() {
-        host_linker.to_vec()
-    } else if mods.linker {
-        flags::linker(home, rustc, dir)
-    } else {
-        Vec::new()
-    };
-    let threads = if mods.threads {
-        flags::threads(home, rustc, dir)
-    } else {
-        Vec::new()
-    };
-    (codegen, linker, threads)
 }
 
 fn workspace_lints(packages: &[Package]) -> Result<HashMap<String, Vec<String>>> {
@@ -193,8 +163,11 @@ impl Settings {
         let target_flags = target_flags(&cfg, &host, home, dir)?;
         let env = crate::config::effective_env(&cfg.env);
         let fork = flags::fork_flags(home, &rustc, dir, &mods);
-        let (codegen, linker, threads) =
-            mod_flags(&mods, release, home, &rustc, dir, &target_flags.host_linker);
+        let threads = if mods.threads {
+            flags::threads(home, &rustc, dir)
+        } else {
+            Vec::new()
+        };
         let profile = crate::manifest::profile(ws, name, crate::manifest::UnitUse::Runtime);
         let build_profile = crate::manifest::profile(ws, name, crate::manifest::UnitUse::BuildOnly);
         let incremental = incremental(crate::manifest::profile_gate(ws, name).map_err(unmodeled)?);
@@ -216,8 +189,6 @@ impl Settings {
             wrapper_local,
             members: members.iter().cloned().collect(),
             rustflags: target_flags.rustflags,
-            codegen,
-            linker,
             host_linker: target_flags.host_linker,
             runner: target_flags.runner,
             env,

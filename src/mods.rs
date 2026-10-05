@@ -21,10 +21,9 @@ fn stamp(path: &Path) -> Option<std::time::SystemTime> {
 pub struct Mods {
     pub enabled: bool,
     pub sweep: bool,
-    pub cranelift: bool,
     pub rmeta: bool,
-    pub slim: bool,
-    pub linker: bool,
+    #[serde(rename = "slim-deps")]
+    pub slim_deps: bool,
     #[serde(rename = "meta-cache")]
     pub meta_cache: bool,
     pub threads: bool,
@@ -38,10 +37,8 @@ impl Default for Mods {
         Self {
             enabled: true,
             sweep: false,
-            cranelift: false,
             rmeta: true,
-            slim: false,
-            linker: false,
+            slim_deps: true,
             meta_cache: true,
             threads: false,
             trust: true,
@@ -56,10 +53,8 @@ impl Mods {
         &[
             "enabled",
             "sweep",
-            "cranelift",
             "rmeta",
-            "slim",
-            "linker",
+            "slim-deps",
             "meta-cache",
             "threads",
             "trust",
@@ -72,10 +67,8 @@ impl Mods {
         Some(match name {
             "enabled" => &mut self.enabled,
             "sweep" => &mut self.sweep,
-            "cranelift" => &mut self.cranelift,
             "rmeta" => &mut self.rmeta,
-            "slim" => &mut self.slim,
-            "linker" => &mut self.linker,
+            "slim-deps" => &mut self.slim_deps,
             "meta-cache" => &mut self.meta_cache,
             "threads" => &mut self.threads,
             "trust" => &mut self.trust,
@@ -176,6 +169,9 @@ fn parse(raw: &str) -> Result<Mods> {
         "lock",
         "units",
         "hardlink",
+        "cranelift",
+        "linker",
+        "slim",
     ] {
         if let Some(value) = value.remove(name) {
             anyhow::ensure!(value.is_bool(), "{name} must be a boolean");

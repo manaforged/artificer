@@ -3,10 +3,10 @@ use super::*;
 #[test]
 fn fresh_defaults_keep_cargo_compiler_choices() -> Result<()> {
     let mods = Mods::default();
-    for name in ["rmeta", "meta-cache"] {
+    for name in ["rmeta", "meta-cache", "slim-deps"] {
         assert!(mods.get(name)?, "{name} should default on");
     }
-    for name in ["sweep", "cranelift", "slim", "linker", "threads", "serve"] {
+    for name in ["sweep", "threads", "serve"] {
         assert!(!mods.get(name)?, "{name} should require opt-in");
     }
     Ok(())
@@ -20,7 +20,7 @@ fn roundtrip_off() -> Result<()> {
     save(tmp.path(), &mods)?;
     let loaded = load(tmp.path())?;
     assert!(!loaded.rmeta);
-    assert!(!loaded.slim);
+    assert!(loaded.slim_deps);
     Ok(())
 }
 
@@ -61,5 +61,20 @@ fn malformed_file_errors() -> Result<()> {
     fs::write(tmp.path().join("mods.toml"), "units = maybe\n")?;
     let error = load(tmp.path()).expect_err("invalid configuration must fail");
     assert!(error.to_string().contains("parse"));
+    Ok(())
+}
+
+#[test]
+fn removed_modes_still_load_and_are_unknown() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    std::fs::write(
+        path(tmp.path()),
+        "cranelift = true\nlinker = true\nslim = true\nrmeta = false\n",
+    )?;
+    let mods = load(tmp.path())?;
+    assert!(!mods.rmeta);
+    for name in ["cranelift", "linker", "slim"] {
+        assert!(mods.get(name).is_err(), "{name} should be unknown");
+    }
     Ok(())
 }

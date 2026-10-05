@@ -169,3 +169,57 @@ fn a_config_patch_builds_through_the_cache() {
     assert_eq!(ok(&home, &root, &["run"]), "patched");
     assert_eq!(fallbacks(&home, &root), 0);
 }
+
+#[test]
+fn dependencies_get_line_table_debug_info_and_workspace_crates_keep_theirs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let upstream = tmp.path().join("upstream");
+    write(
+        &upstream.join("Cargo.toml"),
+        "[package]\nname = \"dep\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    );
+    write(&upstream.join("src/lib.rs"), "pub fn value() -> u8 { 1 }\n");
+    git(&upstream, &["init", "--quiet"]);
+    git(&upstream, &["add", "."]);
+    git(&upstream, &["commit", "--quiet", "-m", "fixture"]);
+    let root = tmp.path().join("app");
+    let url = file_url(&upstream);
+    write(
+        &root.join("Cargo.toml"),
+        &format!(
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\ndep = {{ git = '{url}' }}\n"
+        ),
+    );
+    write(
+        &root.join("src/lib.rs"),
+        "pub fn value() -> u8 { dep::value() }\n",
+    );
+    let home = tmp.path().join("home");
+    let debuginfo = || {
+        let out = artificer(&home, &root)
+            .env("ARTIFICER_TRACE", "1")
+            .arg("build")
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        assert!(out.status.success(), "{stderr}");
+        let last = |name: &str| {
+            stderr
+                .lines()
+                .find(|line| line.contains(&format!("\"--crate-name\" \"{name}\"")))
+                .and_then(|line| line.rsplit("\"debuginfo=").next())
+                .and_then(|rest| rest.split('"').next())
+                .map(str::to_string)
+        };
+        (last("dep"), last("app"))
+    };
+    let lines = Some("line-tables-only".to_string());
+    let full = Some("2".to_string());
+    assert_eq!(debuginfo(), (lines, full.clone()));
+    let off = artificer(&home, &root)
+        .args(["mods", "off", "slim-deps"])
+        .output()
+        .unwrap();
+    assert!(off.status.success());
+    assert_eq!(debuginfo(), (full.clone(), full));
+}

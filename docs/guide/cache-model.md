@@ -60,7 +60,7 @@ kind, and settings, per checkout path, and evicts the unit it replaces
 when that unit is not in use. Registry and git dependencies are not
 evicted this way.
 
-Optional compile modes (`artificer mods`) add rmeta-only checks, linker
-probing, Cranelift for dev code, slimmer debug info, incremental
-cleanup, and the local daemon. See the [command and configuration
+Optional compile modes (`artificer mods`) add rmeta-only checks,
+line-table debug info for dependencies, incremental cleanup, and the
+local daemon. See the [command and configuration
 reference](reference.md).

@@ -236,7 +236,6 @@ pub(crate) fn unit_digest(
         trace.push_str(&format!("kind: {kind}\n"));
         trace.push_str(&format!("types: {types:?}\n"));
         trace.push_str(&format!("features: {feats:?}\n"));
-        trace.push_str(&format!("codegen: {:?}\n", sess.settings.codegen));
         trace.push_str(&format!(
             "wrappers: {:?}\n",
             sess.settings.wrapper_chain(pkg)
@@ -254,11 +253,8 @@ pub(crate) fn unit_digest(
         ));
         trace.push_str(&format!("lints: {:?}\n", sess.settings.lints(pkg)));
         trace.push_str(&format!("check-cfg: {:?}\n", invoke::check_cfg_args(pkg)));
-        trace.push_str(&format!(
-            "slim: {} release: {}\n",
-            sess.settings.mods.slim, sess.settings.release
-        ));
-        trace.push_str(&format!("linker: {:?}\n", sess.settings.linker));
+        trace.push_str(&format!("release: {}\n", sess.settings.release));
+        trace.push_str(&format!("linker: {:?}\n", sess.settings.host_linker));
         trace.push_str(&format!("threads: {:?}\n", sess.settings.threads));
         trace.push_str(&format!("script: {script_id:?}\n"));
         trace.push_str(&format!("source: {source}\n"));

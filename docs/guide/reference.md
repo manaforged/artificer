@@ -125,10 +125,8 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | --- | --- | --- |
 | enabled | on | Cache supported invocations; off sends shim commands directly to Cargo |
 | sweep | off | Remove unpublished scratch copies during handled builds |
-| cranelift | off | Use Cranelift when rustc accepts it |
 | rmeta | on | Emit metadata-only artifacts for check where possible |
-| slim | off | Use line-table debug info and disable embedded bitcode |
-| linker | off | Probe for mold, wild, ld64.mold, or lld |
+| slim-deps | on | Compile crates.io and git dependencies with line-table debug info; workspace and path crates keep the profile's debug info |
 | meta-cache | on | Cache Cargo metadata outside the workspace target directory |
 | threads | off | Use up to 8 rustc parallel frontend threads when rustc accepts them |
 | trust | on | Skip checks that only report errors in crates.io dependencies when rustc accepts `-Z trusted-crate` |
@@ -148,9 +146,6 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | ARTIFICER_REMOTE | Remote store for builds and `artificer pull`; overrides `artificer remote set`. Empty turns it off |
 | ARTIFICER_JOBS | Maximum Artificer compile workers in one process |
 | CARGO_BUILD_JOBS | Cargo's job cap; used when ARTIFICER_JOBS is unset |
-| ARTIFICER_CODEGEN=llvm or off | Disable automatic Cranelift selection when its mode is on |
-| ARTIFICER_LINKER=off or default | Disable automatic linker selection |
-| ARTIFICER_LINKER=PATH | Use an explicit linker when the linker mode is on |
 | ARTIFICER_THREADS=off | Disable rustc frontend threads when their mode is on |
 | ARTIFICER_TIMING | Print Artificer phase timings to stderr; build profiles are recorded either way |
 | ARTIFICER_TRACE | Print rustc commands |

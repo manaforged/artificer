@@ -50,7 +50,7 @@ command
 | src/mods.rs | Optional compile modes |
 | src/serve.rs | Optional loopback daemon |
 | src/sweep.rs | Target-directory cleanup for sweep mode and `artificer clean` |
-| src/flags.rs | rustc capability probes (Cranelift, linker, threads) |
+| src/flags.rs | rustc capability probes (frontend threads and fork flags) |
 | src/platform.rs | Host probes: pid liveness, hostname, path spelling |
 | src/out.rs | Output routing: human lines and cargo JSON |
 | src/home.rs | Store location and the PATH snippet |

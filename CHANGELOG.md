@@ -9,6 +9,16 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- A new `slim-deps` mode, on by default, compiles crates.io and git
+  dependencies with line-table debug info. Workspace and path crates keep
+  the profile's debug info, so they debug as before, and backtraces keep
+  file and line for every crate. It replaces the `slim` mode, which
+  lowered debug info for every crate; set `debug = "line-tables-only"` in
+  a Cargo profile for that.
+- The `cranelift` and `linker` modes are removed, with the
+  `ARTIFICER_CODEGEN` and `ARTIFICER_LINKER` variables. A Cargo-configured
+  linker still applies. A `mods.toml` that names `cranelift`, `linker`, or
+  `slim` still loads.
 - A library is keyed on the build-script run it compiles against. Two
   builds whose script runs differ, for example in `RUSTDOC`, no longer
   rebuild one library unit in turn, which sent a build to Cargo with
@@ -49,15 +59,11 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
   build on the machine. Each held token is recorded under a lock the
   system releases when its process dies, and a build that waits two
   seconds for a token takes back any whose holder is gone.
-- The `slim` mode lowers debug info to line tables again. Its flag came
-  before the profile's `-C debuginfo`, so rustc used the profile's value.
-- The `slim` mode builds on Windows. It passed `-C split-debuginfo=off`,
-  which rustc rejects on MSVC targets.
 - The `threads` mode uses up to 8 frontend threads instead of a quarter
   of the cores.
-- The `threads`, `cranelift`, and `linker` modes take effect again. Their
-  compiler probe wrote into a directory it never created, so each probe
-  failed and the mode stayed off.
+- The `threads` mode takes effect again. Its compiler probe wrote into a
+  directory it never created, so the probe failed and the mode stayed
+  off.
 - A build no longer hangs when its standard error closes early, as in
   `cargo build 2>&1 | head`. Artificer's own messages ignore a closed pipe,
   and a build worker that crashes now fails the build instead of leaving
