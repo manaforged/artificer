@@ -21,7 +21,7 @@ real Cargo. Named `artificer`, it accepts the commands below.
 | `artificer run` | Build and run a binary or example |
 | `artificer test` | Build and run tests |
 | `artificer warm` | Populate the store for a workspace |
-| `artificer clean` | Evict expired units, enforce the store cap, and delete `target/<profile>/{incremental,artificer,deps,.fingerprint,build}` |
+| `artificer clean` | Evict expired units, enforce the store cap, and delete `target/<profile>/{incremental,.artificer,deps,.fingerprint,build}` |
 | `artificer serve` | Run the local daemon in the foreground |
 | `artificer serve stop` | Stop the local daemon |
 | `artificer stat [--json]` | Show store and mode status |

@@ -169,3 +169,36 @@ fn a_packages_tests_compile_at_the_same_time() {
         "no two compiles overlapped: {compiles:?}"
     );
 }
+
+#[test]
+fn a_binary_named_like_the_tool_builds_beside_its_library() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("tool");
+    let home = tmp.path().join("home");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"tool\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"artificer\"\npath = \"src/main.rs\"\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/lib.rs"), "pub fn value() -> u8 { 1 }\n").unwrap();
+    fs::write(
+        root.join("src/main.rs"),
+        "fn main() { println!(\"{}\", tool::value()); }\n",
+    )
+    .unwrap();
+    for body in [
+        "pub fn value() -> u8 { 1 }\n",
+        "pub fn value() -> u8 { 2 }\n",
+    ] {
+        fs::write(root.join("src/lib.rs"), body).unwrap();
+        let out = artificer(&home, &root).arg("build").output().unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    let exe = format!("artificer{}", std::env::consts::EXE_SUFFIX);
+    assert!(root.join("target/debug").join(exe).is_file());
+}

@@ -23,7 +23,7 @@ fn incremental_and_deps_go() {
     let root = tmp.path().join("ws");
     write_lib(&root, "widget");
     let inc = root.join("target/debug/incremental/foo");
-    let compiled = root.join("target/debug/artificer/0123abcd");
+    let compiled = root.join("target/debug/.artificer/0123abcd");
     fs::create_dir_all(&compiled).unwrap();
     fs::write(compiled.join("libwidget-0123abcd.rlib"), b"old").unwrap();
     let deps = root.join("target/debug/deps");
@@ -48,7 +48,7 @@ fn incremental_and_deps_go() {
     );
     assert!(!root.join("target/debug/incremental").exists());
     assert!(
-        !root.join("target/debug/artificer").exists(),
+        !root.join("target/debug/.artificer").exists(),
         "clean drops the compile directory"
     );
     assert!(root.join("off/debug/incremental").exists());

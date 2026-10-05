@@ -4,7 +4,7 @@ use std::path::Path;
 use std::time::Duration;
 
 pub(crate) const INCREMENTAL_DIR: &str = "incremental";
-pub(crate) const COMPILE_DIR: &str = "artificer";
+pub(crate) const COMPILE_DIR: &str = ".artificer";
 const BUILD_DIRS: [&str; 5] = [
     INCREMENTAL_DIR,
     COMPILE_DIR,

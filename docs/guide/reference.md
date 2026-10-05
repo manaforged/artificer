@@ -13,7 +13,7 @@ The direct artificer executable reports the reason and exits with status 2.
 | run | One binary or one named example, with Cargo-compatible child arguments |
 | test | Unit, integration, binary, and documentation tests. Test binaries and doctests run at the same time, up to the job limit (`ARTIFICER_JOBS` or `CARGO_BUILD_JOBS`). Cargo runs them one at a time |
 | artificer warm | Workspace check that populates the store |
-| artificer clean | Evict expired units, enforce the store cap, and delete `target/<profile>/{incremental,artificer,deps,.fingerprint,build}` |
+| artificer clean | Evict expired units, enforce the store cap, and delete `target/<profile>/{incremental,.artificer,deps,.fingerprint,build}` |
 | clippy | While caching is enabled, cargo-clippy runs with the shim as `CARGO`; otherwise Cargo runs it |
 | nextest | While caching is enabled, cargo-nextest runs with the shim as `CARGO`; otherwise Cargo runs it |
 | all other Cargo commands | Configured Cargo executable |
@@ -83,7 +83,7 @@ directly to see the reason.
 | artificer why-miss CRATE | Show what changed between the last two key records of one crate |
 | artificer doctor | Check the mode, shim PATH precedence, real Cargo, store path, jobserver, store, rustc, fallbacks, daemon, and rust-analyzer |
 | artificer warm | Compile the current workspace into the shared store |
-| artificer clean | Evict expired units, enforce the store cap, and delete `target/<profile>/{incremental,artificer,deps,.fingerprint,build}` |
+| artificer clean | Evict expired units, enforce the store cap, and delete `target/<profile>/{incremental,.artificer,deps,.fingerprint,build}` |
 | artificer serve | Start the local daemon in the foreground |
 | artificer serve stop | Stop the local daemon and remove its control files |
 | artificer env | Print the shell command that puts the shim first on PATH |
@@ -101,10 +101,10 @@ directly to see the reason.
 | artificer mods off NAME | Disable one compile mode |
 
 `artificer clean` evicts expired units, enforces the store cap, and
-deletes `target/<profile>/{incremental,artificer,deps,.fingerprint,build}`. It skips
+deletes `target/<profile>/{incremental,.artificer,deps,.fingerprint,build}`. It skips
 a compile directory that a running build is compiling in, and it does not
 delete the store. The sweep mode removes unpublished scratch copies
-during handled builds. It keeps `incremental/` and `artificer/`, which
+during handled builds. It keeps `incremental/` and `.artificer/`, which
 hold the incremental state and compile output of path packages.
 
 ## Exit codes

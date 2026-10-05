@@ -14,7 +14,7 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
   change. A probe made with `RUSTC_BOOTSTRAP` set no longer applies to
   builds without it, where rustc would reject the flag.
 - `artificer clean` deletes the compile directories under
-  `target/<profile>/artificer/`, except one a running build is compiling
+  `target/<profile>/.artificer/`, except one a running build is compiling
   in. A pipelined dependent reads its dependency's metadata from the
   cache, so a clean or a second build cannot remove it mid-build.
 - A unit is keyed on its own target's files. Editing an integration
@@ -35,7 +35,7 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
   incremental state.
 - Rebuilding an edited workspace crate reuses rustc's incremental cache,
   as Cargo does. Each workspace crate compiles in a stable directory
-  under `target/<profile>/artificer/`, and its outputs are then published
+  under `target/<profile>/.artificer/`, and its outputs are then published
   to the cache. Each edit had compiled in a new directory, which made
   rustc recompile the whole crate. The first build after upgrading
   recompiles workspace crates once.
