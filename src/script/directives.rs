@@ -247,6 +247,19 @@ pub fn link_search(output: &str) -> Vec<String> {
         .collect()
 }
 
+const SEARCH_KINDS: [&str; 5] = ["native=", "dependency=", "crate=", "framework=", "all="];
+
+pub(super) fn searches_resolve(output: &str) -> bool {
+    link_search(output).iter().all(|entry| {
+        let path = SEARCH_KINDS
+            .iter()
+            .find_map(|kind| entry.strip_prefix(kind))
+            .unwrap_or(entry);
+        let path = Path::new(path);
+        !path.is_absolute() || path.exists()
+    })
+}
+
 type CfgRows = Vec<(String, String)>;
 
 pub(super) fn parse_print_cfg(stdout: &str) -> Result<CfgRows> {
