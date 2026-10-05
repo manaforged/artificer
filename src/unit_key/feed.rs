@@ -53,11 +53,10 @@ pub(super) fn feed_inputs(
     );
     key.feed_list(sess.settings.lints(pkg).iter());
     key.feed_list(invoke::check_cfg_args(pkg));
-    key.feed(&[u8::from(sess.settings.mods.slim)]);
     key.feed(&[u8::from(sess.settings.release)]);
     key.feed_list(
         sess.settings
-            .linker
+            .host_linker
             .iter()
             .map(|a| crate::inputs::portable(&sess.settings.home, a)),
     );
@@ -92,9 +91,6 @@ fn feed_toolchain(key: &mut Key, sess: &Session, pkg: &Package) -> Option<String
     key.feed_str(&sess.settings.rustc);
     key.feed_str(&key::rustc_bin());
     key.feed_str(&key::explicit_rustc_identity().unwrap_or_default());
-    for a in &sess.settings.codegen {
-        key.feed(a.as_bytes());
-    }
     for w in sess.settings.wrapper_chain(pkg) {
         key.feed(w.as_bytes());
     }

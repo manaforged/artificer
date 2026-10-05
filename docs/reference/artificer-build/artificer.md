@@ -135,14 +135,12 @@
 
 | Field | Description |
 | --- | --- |
-| <code>cranelift: bool</code> |  |
 | <code>early: bool</code> |  |
 | <code>enabled: bool</code> |  |
-| <code>linker: bool</code> |  |
 | <code>meta_cache: bool</code> |  |
 | <code>rmeta: bool</code> |  |
 | <code>serve: bool</code> |  |
-| <code>slim: bool</code> |  |
+| <code>slim_deps: bool</code> |  |
 | <code>sweep: bool</code> |  |
 | <code>threads: bool</code> |  |
 | <code>trust: bool</code> |  |

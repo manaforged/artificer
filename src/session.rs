@@ -65,13 +65,18 @@ impl Session {
 
     pub(crate) fn profile_args(&self, pkg: &Package, takes_lto: bool) -> Vec<String> {
         let mut args = crate::settings::profile_for(self.profile(pkg), takes_lto);
-        let full = self
-            .profile_value(pkg, "debuginfo")
-            .is_some_and(|v| matches!(v, "1" | "2" | "limited" | "full"));
-        if self.settings.mods.slim && full {
+        if self.slims(pkg) {
             args.extend(["-C".to_string(), "debuginfo=line-tables-only".to_string()]);
         }
         args
+    }
+
+    fn slims(&self, pkg: &Package) -> bool {
+        self.settings.mods.slim_deps
+            && pkg.source.is_some()
+            && self
+                .profile_value(pkg, "debuginfo")
+                .is_some_and(|v| matches!(v, "1" | "2" | "limited" | "full"))
     }
 
     pub(crate) fn profile_value(&self, pkg: &Package, key: &str) -> Option<&str> {
