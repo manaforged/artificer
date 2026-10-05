@@ -9,6 +9,10 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- `artificer clean` deletes the compile directories under
+  `target/<profile>/artificer/`, except one a running build is compiling
+  in. A pipelined dependent reads its dependency's metadata from the
+  cache, so a clean or a second build cannot remove it mid-build.
 - A unit is keyed on its own target's files. Editing an integration
   test, example, or bench no longer rebuilds the library, the binaries,
   or the other tests, as with Cargo. Before, any file in the package

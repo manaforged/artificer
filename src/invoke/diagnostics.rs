@@ -100,14 +100,17 @@ fn stream(
         };
         let ready = early.and_then(|early| match notice {
             Emitted::Metadata(path) if path.file_name() == early.rmeta.file_name() => {
-                Some((early, MetaStage::Full))
+                Some((early, MetaStage::Full, path, &early.rmeta))
             }
             Emitted::EarlyMetadata(path) if path.file_name() == early.early_rmeta.file_name() => {
-                Some((early, MetaStage::Early))
+                Some((early, MetaStage::Early, path, &early.early_rmeta))
             }
             _ => None,
         });
-        if let Some((early, stage)) = ready {
+        if let Some((early, stage, emitted, published)) = ready {
+            if emitted != *published {
+                super::staging::publish_file(&emitted, published).map_err(std::io::Error::other)?;
+            }
             sess.put(pkg.id.clone(), early.artifact.clone());
             if let Some(signal) = &signal {
                 signal.metadata_ready(stage);

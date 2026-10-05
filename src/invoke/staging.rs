@@ -15,10 +15,8 @@ pub(crate) fn stage(home: &Path, cmd: &Command, out: &Path) -> Result<Option<Sta
     let Some(dir) = out_dir(cmd).filter(|dir| dir.as_path() != out) else {
         return Ok(None);
     };
-    let mut key = crate::action::Key::new();
-    key.feed(dir.as_os_str().as_encoded_bytes());
-    let hold = crate::store::hold(home, &format!("compile-{}", key.digest()))?;
     fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+    let hold = crate::store::hold(home, &claim_name(&dir))?;
     for entry in fs::read_dir(&dir).with_context(|| format!("read {}", dir.display()))? {
         let entry = entry?;
         if scratch(&entry.file_name()) {
@@ -59,20 +57,28 @@ fn link_tree(from: &Path, to: &Path) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn publish_file(source: &Path, target: &Path) -> Result<()> {
+    if let Some(dir) = target.parent() {
+        fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+    }
+    link_file(source, target)
+}
+
 fn link_file(source: &Path, target: &Path) -> Result<()> {
-    match fs::remove_file(target) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(error).with_context(|| format!("replace {}", target.display()));
-        }
-    }
-    if fs::hard_link(source, target).is_ok() {
-        return Ok(());
-    }
-    fs::copy(source, target)
-        .map(drop)
-        .with_context(|| format!("copy {} to {}", source.display(), target.display()))
+    crate::platform::replace_atomic(target, |tmp| {
+        fs::hard_link(source, tmp).or_else(|_| fs::copy(source, tmp).map(drop))
+    })
+    .with_context(|| format!("publish {} to {}", source.display(), target.display()))
+}
+
+pub(crate) fn try_claim(home: &Path, dir: &Path) -> Result<Option<crate::store::Hold>> {
+    crate::store::try_hold(home, &claim_name(dir))
+}
+
+fn claim_name(dir: &Path) -> String {
+    let mut key = crate::action::Key::new();
+    key.feed(crate::resolve_path(dir).as_os_str().as_encoded_bytes());
+    format!("compile-{}", key.digest())
 }
 
 fn scratch(name: &OsStr) -> bool {

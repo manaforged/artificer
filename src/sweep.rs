@@ -4,7 +4,14 @@ use std::path::Path;
 use std::time::Duration;
 
 pub(crate) const INCREMENTAL_DIR: &str = "incremental";
-const BUILD_DIRS: [&str; 4] = [INCREMENTAL_DIR, "deps", ".fingerprint", "build"];
+pub(crate) const COMPILE_DIR: &str = "artificer";
+const BUILD_DIRS: [&str; 5] = [
+    INCREMENTAL_DIR,
+    COMPILE_DIR,
+    "deps",
+    ".fingerprint",
+    "build",
+];
 
 const SCRATCH_GRACE: Duration = Duration::from_secs(60 * 60);
 
@@ -44,12 +51,26 @@ pub(crate) fn workspace(target_dir: &Path, home: &Path, full: bool) -> Result<Re
             {
                 continue;
             }
-            fs::remove_dir_all(path)?;
+            remove(&home, name, &path)?;
             report.incremental_dirs += 1;
         }
     }
     report.scratch_dirs = gc_scratch(&home)?;
     Ok(report)
+}
+
+fn remove(home: &Path, name: &str, path: &Path) -> Result<()> {
+    if name != COMPILE_DIR {
+        return Ok(fs::remove_dir_all(path)?);
+    }
+    for entry in fs::read_dir(path)? {
+        let dir = entry?.path();
+        if let Some(_claim) = crate::invoke::try_claim(home, &dir)? {
+            fs::remove_dir_all(&dir)?;
+        }
+    }
+    drop(fs::remove_dir(path));
+    Ok(())
 }
 
 pub(crate) fn gc_scratch(home: &Path) -> Result<u32> {

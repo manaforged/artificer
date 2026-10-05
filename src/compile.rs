@@ -82,7 +82,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
     };
     let mut cmd = unit.command(node, &compile_out, stem, script.as_ref(), &keyed)?;
     let manifest = unit_key::dep_manifest(sess, node, false, None)?;
-    let early = unit.early(&compile_out, stem);
+    let early = unit.early(&out, stem);
     let rustc = unit.rustc(&action, &mut cmd, &manifest, early.as_ref())?;
     let art = unit.artifact(&out, stem)?;
     sess.put(id.to_string(), art.clone());

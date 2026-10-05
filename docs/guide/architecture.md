@@ -121,7 +121,8 @@ directory.
 rustc writes registry and git crates directly into the unit directory under an
 operating-system file lock. Workspace crates compile in a stable directory under
 `target/<profile>/artificer/`, which keeps rustc's incremental cache valid, and
-their outputs are then linked into the unit directory.
+their outputs are then linked into the unit directory. Metadata is linked as soon as
+rustc writes it, so a pipelined dependent reads only store paths.
 The ok marker is written only after successful compilation and dependency recording.
 Builds retain read locks until their compilers and executables finish using the units.
 Replacement and garbage collection require an exclusive lock. A conflicting build
