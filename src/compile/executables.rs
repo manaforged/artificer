@@ -203,7 +203,8 @@ fn compile_exe(
         .lineage(keyed.lineage);
     let exe = action.out.join(exe_file(&crate_name));
     let run = Exe { sess, pkg, target };
-    let mut cmd = run.command(node, set, label == "example", &action.out, script.as_ref())?;
+    let compile_out = action.compile_out(&sess.settings, pkg);
+    let mut cmd = run.command(node, set, label == "example", &compile_out, script.as_ref())?;
     let manifest = unit_key::dep_manifest(
         sess,
         node,

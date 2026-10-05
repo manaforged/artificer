@@ -24,7 +24,7 @@ fn compile_env(sess: &Session, pkg: &Package, name: &str, target_tmpdir: bool) -
     }
 }
 
-fn from_registry(pkg: &Package) -> bool {
+pub(crate) fn from_registry(pkg: &Package) -> bool {
     from_registry_in(pkg, &cargo::cargo_home())
 }
 
@@ -216,12 +216,7 @@ pub(crate) fn unit_digest(
         let source = if from_registry(pkg) {
             format!("registry:{}", pkg.id.rsplit('#').next().unwrap_or(&pkg.id))
         } else {
-            sess.source_keys
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get(&pkg.id)
-                .cloned()
-                .unwrap_or_default()
+            content.clone().unwrap_or_default()
         };
         let script_id = script.map(|s| {
             let mut h = blake3::Hasher::new();

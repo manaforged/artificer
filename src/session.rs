@@ -21,9 +21,9 @@ pub struct Session {
     pub artifacts: Mutex<HashMap<String, Artifact>>,
     pub(crate) natives: Mutex<HashMap<String, String>>,
     link_edges: Mutex<HashMap<String, Vec<(String, LinkEdge)>>>,
-    pub(crate) source_keys: Mutex<HashMap<String, String>>,
+    sources: Mutex<HashMap<String, Arc<crate::key::Source>>>,
     artifact_hashes: Mutex<HashMap<PathBuf, String>>,
-    env_names: Mutex<HashMap<String, Arc<Vec<String>>>>,
+    digests: Mutex<HashMap<String, String>>,
     pub(crate) published: Mutex<HashMap<String, Vec<(String, String)>>>,
     pub(crate) scripts: Mutex<HashMap<String, crate::script::Script>>,
     pub json: bool,
@@ -102,9 +102,9 @@ impl Session {
             artifacts: Mutex::new(HashMap::new()),
             natives: Mutex::new(HashMap::new()),
             link_edges: Mutex::new(HashMap::new()),
-            source_keys: Mutex::new(HashMap::new()),
+            sources: Mutex::new(HashMap::new()),
             artifact_hashes: Mutex::new(HashMap::new()),
-            env_names: Mutex::new(HashMap::new()),
+            digests: Mutex::new(HashMap::new()),
             published: Mutex::new(HashMap::new()),
             scripts: Mutex::new(HashMap::new()),
             json: false,
@@ -153,21 +153,10 @@ impl Session {
         self.target_tmpdir = Some(path);
     }
 
-    pub(crate) fn env_names(&self, pkg: &Package, tests: bool) -> Arc<Vec<String>> {
-        let slot = format!("{}|{tests}", pkg.id);
-        if let Some(hit) = self.env_names.lock().expect("env_names").get(&slot) {
-            return Arc::clone(hit);
-        }
-        let names = Arc::new(crate::key::env_names(
-            pkg.root(),
-            &[&self.settings.home, &self.settings.target_dir],
-            tests,
-        ));
-        self.env_names
-            .lock()
-            .expect("env_names")
-            .insert(slot, Arc::clone(&names));
-        names
+    pub(crate) fn env_names(&self, pkg: &Package, tests: bool) -> Vec<String> {
+        self.source(pkg)
+            .map(|source| source.env(tests).to_vec())
+            .unwrap_or_default()
     }
 
     pub(crate) fn put(&self, id: String, art: Artifact) {
@@ -176,6 +165,21 @@ impl Session {
 
     pub(crate) fn retain(&self, lease: Arc<std::fs::File>) {
         self.leases.lock().expect("unit leases").push(lease);
+    }
+
+    pub(crate) fn note_digest(&self, id: &str, digest: &str) {
+        self.digests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(id.to_string(), digest.to_string());
+    }
+
+    pub(crate) fn digest_of(&self, id: &str) -> Option<String> {
+        self.digests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(id)
+            .cloned()
     }
 
     pub(crate) fn get(&self, id: &str) -> Option<Artifact> {
@@ -200,32 +204,42 @@ impl Session {
     }
 
     pub(crate) fn source_key(&self, pkg: &Package) -> Result<String> {
+        if crate::unit_key::from_registry(pkg) {
+            return Ok(format!("registry:{}", pkg.id));
+        }
+        Ok(self.source(pkg)?.key.clone())
+    }
+
+    fn source(&self, pkg: &Package) -> Result<Arc<crate::key::Source>> {
         let cached = self
-            .source_keys
+            .sources
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get(&pkg.id)
             .cloned();
-        if let Some(key) = cached {
-            return Ok(key);
+        if let Some(source) = cached {
+            return Ok(source);
         }
-        let key = crate::profile::span(crate::profile::UnitPhase::Key, || {
-            crate::key::lib(
-                Some(&self.settings.home),
-                pkg.root(),
-                &self.settings.rustc,
-                &pkg.name,
-                pkg.lib_target()
-                    .map(|t| t.edition.as_str())
-                    .unwrap_or("2021"),
-                &[&self.settings.home, &self.settings.target_dir],
-            )
-        })?;
-        self.source_keys
+        let source = Arc::new(crate::profile::span(
+            crate::profile::UnitPhase::Key,
+            || {
+                crate::key::lib(
+                    Some(&self.settings.home),
+                    pkg.root(),
+                    &self.settings.rustc,
+                    &pkg.name,
+                    pkg.lib_target()
+                        .map(|t| t.edition.as_str())
+                        .unwrap_or("2021"),
+                    &[&self.settings.home, &self.settings.target_dir],
+                )
+            },
+        )?);
+        self.sources
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(pkg.id.clone(), key.clone());
-        Ok(key)
+            .insert(pkg.id.clone(), Arc::clone(&source));
+        Ok(source)
     }
 
     pub(crate) fn learn_links(&self, meta: &crate::cargo::Metadata) {

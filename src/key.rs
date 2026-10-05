@@ -14,6 +14,19 @@ const SKIP: &[&str] = &[
     ".venv",
 ];
 
+#[derive(Debug)]
+pub(crate) struct Source {
+    pub(crate) key: String,
+    env_src: Vec<String>,
+    env_all: Vec<String>,
+}
+
+impl Source {
+    pub(crate) fn env(&self, tests: bool) -> &[String] {
+        if tests { &self.env_all } else { &self.env_src }
+    }
+}
+
 pub(crate) fn lib(
     home: Option<&Path>,
     pkg: &Path,
@@ -21,10 +34,12 @@ pub(crate) fn lib(
     name: &str,
     edition: &str,
     skip: &[&Path],
-) -> Result<String> {
+) -> Result<Source> {
     let files = collect(pkg, pkg, skip)?;
+    let src_only = pkg.join("src").is_dir();
     let mut memo = crate::digest::Memo::new(home);
     let mut hasher = blake3::Hasher::new();
+    let (mut env_src, mut env_all) = (Vec::new(), Vec::new());
     feed(&mut hasher, rustc.as_bytes());
     feed(&mut hasher, name.as_bytes());
     feed(&mut hasher, edition.as_bytes());
@@ -32,9 +47,14 @@ pub(crate) fn lib(
         hasher.update(&(f.rel.len() as u64).to_le_bytes());
         hasher.update(f.rel.as_bytes());
         match &f.data {
-            Data::File(path) => {
+            Data::File { canonical, meta } => {
+                let scan = memo.known(canonical, meta)?;
                 hasher.update(b"file");
-                feed(&mut hasher, memo.file(path)?.as_bytes());
+                feed(&mut hasher, scan.digest.as_bytes());
+                if !src_only || Path::new(&f.rel).starts_with("src") {
+                    env_src.extend(scan.env.iter().cloned());
+                }
+                env_all.extend(scan.env);
             }
             Data::Link(target) => {
                 hasher.update(b"link");
@@ -42,7 +62,15 @@ pub(crate) fn lib(
             }
         }
     }
-    Ok(hex(&hasher))
+    for names in [&mut env_src, &mut env_all] {
+        names.sort();
+        names.dedup();
+    }
+    Ok(Source {
+        key: hex(&hasher),
+        env_src,
+        env_all,
+    })
 }
 
 fn feed(hasher: &mut blake3::Hasher, bytes: &[u8]) {
@@ -60,7 +88,10 @@ struct File {
 }
 
 enum Data {
-    File(PathBuf),
+    File {
+        canonical: PathBuf,
+        meta: fs::Metadata,
+    },
     Link(PathBuf),
 }
 
@@ -84,7 +115,7 @@ fn collect_into(
         "symlink cycle while scanning {}",
         dir.display()
     );
-    ancestors.push(canonical);
+    ancestors.push(canonical.clone());
     let result = (|| {
         let mut entries: Vec<_> = fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
         entries.sort_by_key(|e| e.file_name());
@@ -112,9 +143,14 @@ fn collect_into(
             if meta.is_dir() {
                 collect_into(root, &path, skip, ancestors, out)?;
             } else if meta.is_file() {
+                let canonical = if ft.is_symlink() {
+                    fs::canonicalize(&path).unwrap_or(path)
+                } else {
+                    canonical.join(&name)
+                };
                 out.push(File {
                     rel,
-                    data: Data::File(path),
+                    data: Data::File { canonical, meta },
                 });
             }
         }
@@ -128,40 +164,7 @@ fn collect_into(
 #[path = "key_tests.rs"]
 mod tests;
 
-#[must_use]
-pub fn env_names(pkg: &Path, skip: &[&Path], tests: bool) -> Vec<String> {
-    let roots: Vec<PathBuf> = if tests {
-        vec![pkg.to_path_buf()]
-    } else {
-        let src = pkg.join("src");
-        if src.is_dir() {
-            vec![src]
-        } else {
-            vec![pkg.to_path_buf()]
-        }
-    };
-    let mut files = Vec::new();
-    for root in &roots {
-        if let Ok(mut found) = collect(root, root, skip) {
-            files.append(&mut found);
-        }
-    }
-    let mut names = Vec::new();
-    for f in files {
-        let Data::File(path) = f.data else {
-            continue;
-        };
-        let Ok(text) = fs::read_to_string(path) else {
-            continue;
-        };
-        scan_env(&text, &mut names);
-    }
-    names.sort();
-    names.dedup();
-    names
-}
-
-fn scan_env(text: &str, out: &mut Vec<String>) {
+pub(crate) fn scan_env(text: &str, out: &mut Vec<String>) {
     let bytes = text.as_bytes();
     let mut at = 0;
     while let Some(found) = text[at..].find("env!") {

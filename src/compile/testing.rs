@@ -234,7 +234,11 @@ fn compile_test_one(
         .lineage(keyed.lineage);
     let out = action.out.clone();
     let exe = out.join(executables::exe_file(&crate_name));
-    let mut cmd = unit.command(bin_exe, &out, script.as_ref())?;
+    let mut cmd = unit.command(
+        bin_exe,
+        &action.compile_out(&sess.settings, pkg),
+        script.as_ref(),
+    )?;
     let manifest = unit_key::dep_manifest(sess, node, true, (!is_lib).then_some(pkg.id.as_str()))?;
     if let Some(restored) = unit.restore(&action, &exe, &manifest, &cmd)? {
         return Ok(restored);

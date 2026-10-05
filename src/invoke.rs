@@ -260,6 +260,7 @@ pub(crate) fn set_target_tmpdir(cmd: &mut Command, sess: &Session, enabled: bool
 }
 
 mod diagnostics;
+mod staging;
 pub(crate) use diagnostics::{Early, note_rustc, primary_env, replay, run_rustc};
 
 #[cfg(test)]

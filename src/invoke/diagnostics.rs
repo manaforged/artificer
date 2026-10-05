@@ -161,6 +161,7 @@ pub(crate) fn run_rustc_inner(
     if std::env::var_os("ARTIFICER_TRACE").is_some() || crate::out::trace() {
         crate::out::diag(format!("ARTIFICER_CMD {}: {:?}", pkg.name, cmd));
     }
+    let staged = super::staging::stage(&sess.settings.home, cmd, out)?;
     let path = out.join(DIAGNOSTICS);
     let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
     sess.announce(pkg, TargetKind::of(target) == TargetKind::BuildScript);
@@ -170,6 +171,11 @@ pub(crate) fn run_rustc_inner(
         cmd.env(crate::profile::BOOTSTRAP.0, crate::profile::BOOTSTRAP.1);
     }
     let status = stream(cmd, sess, pkg, file, early).context("rustc")?;
+    if let Some(staged) = &staged
+        && status.success()
+    {
+        staged.publish(out)?;
+    }
     if passes {
         crate::profile::note_passes(
             crate::profile::harvest(&path).with_context(|| format!("read {}", path.display()))?,

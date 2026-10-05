@@ -9,6 +9,16 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- Rebuilding an edited workspace crate reuses rustc's incremental cache,
+  as Cargo does. Each workspace crate compiles in a stable directory
+  under `target/<profile>/artificer/`, and its outputs are then published
+  to the cache. Each edit had compiled in a new directory, which made
+  rustc recompile the whole crate. The first build after upgrading
+  recompiles workspace crates once.
+- An unchanged source file costs one file-system check per build. The
+  digest cache records which environment variables a file reads, and a
+  crates.io dependency's build script is keyed on the package version
+  instead of a scan of its files.
 - rustc runs straight from the toolchain's sysroot, as with Cargo,
   instead of through the rustup proxy on every compile. With `RUSTC` set,
   that program runs as given.

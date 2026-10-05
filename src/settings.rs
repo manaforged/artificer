@@ -109,6 +109,12 @@ impl Settings {
             .join(if self.release { "release" } else { "debug" })
     }
 
+    pub(crate) fn compile_dir(&self, pkg: &Package, lineage: Option<&str>) -> Option<PathBuf> {
+        let lineage = lineage?;
+        self.incremental_dir(pkg)?;
+        Some(self.profile_dir().join(COMPILE_DIR).join(lineage))
+    }
+
     pub(crate) fn incremental_dir(&self, pkg: &Package) -> Option<PathBuf> {
         (self.incremental && pkg.source.is_none())
             .then(|| self.profile_dir().join(crate::sweep::INCREMENTAL_DIR))
@@ -277,6 +283,7 @@ impl Settings {
     }
 }
 
+const COMPILE_DIR: &str = "artificer";
 const INCREMENTAL_ENV: &str = "CARGO_INCREMENTAL";
 const BUILD_INCREMENTAL_ENV: &str = "CARGO_BUILD_INCREMENTAL";
 

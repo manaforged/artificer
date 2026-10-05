@@ -86,6 +86,7 @@ impl<'u> PackageUnit<'u> {
         &self,
         node: &cargo::Node,
         out: &Path,
+        stem: &str,
         script: Option<&Script>,
         keyed: &unit_key::UnitKey,
     ) -> Result<Command> {
@@ -128,8 +129,7 @@ impl<'u> PackageUnit<'u> {
             self.lto_ok,
         );
         cmd.arg("-C").arg(format!("metadata={}", keyed.metadata));
-        cmd.arg("-C")
-            .arg(format!("extra-filename=-{}", keyed.digest));
+        cmd.arg("-C").arg(format!("extra-filename=-{stem}"));
         invoke::add_externs(
             &mut cmd,
             sess,

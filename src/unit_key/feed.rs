@@ -113,6 +113,8 @@ fn feed_source(
         key.feed_str(&pkg.id);
         return;
     }
+    key.feed_str(&pkg.name);
+    key.feed_str(&pkg.version);
     if let Feed::Unit {
         content: Some(base),
     } = feed
@@ -153,15 +155,14 @@ fn feed_deps(
     for d in deps {
         let id = d.rsplit('#').next().unwrap_or(d);
         key.feed_str(id);
-        let mut artifact = String::new();
+        let mut unit = String::new();
         if let Feed::Unit { .. } = feed
-            && let Some(art) = sess.get(d)
-            && let Some(name) = art.path.file_name()
+            && let Some(digest) = sess.digest_of(d)
         {
-            key.feed(name.as_encoded_bytes());
-            artifact = name.to_string_lossy().into_owned();
+            key.feed(digest.as_bytes());
+            unit = digest;
         }
-        dep_trace.push(format!("dep: {id}=>{artifact}"));
+        dep_trace.push(format!("dep: {id}=>{unit}"));
     }
     dep_trace
 }

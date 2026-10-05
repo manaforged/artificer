@@ -155,7 +155,7 @@ fn check_one(
         target,
         false,
         &node.features,
-        &action.out,
+        &action.compile_out(&sess.settings, pkg),
         script.as_ref(),
         false,
     );

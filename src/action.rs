@@ -105,6 +105,16 @@ impl Action {
         })
     }
 
+    pub(crate) fn compile_out(
+        &self,
+        settings: &crate::settings::Settings,
+        pkg: &crate::cargo::Package,
+    ) -> PathBuf {
+        settings
+            .compile_dir(pkg, self.lineage.as_deref())
+            .unwrap_or_else(|| self.out.clone())
+    }
+
     #[must_use]
     pub fn lineage(mut self, lineage: Option<String>) -> Self {
         self.lineage = lineage;
