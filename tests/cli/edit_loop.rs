@@ -193,3 +193,41 @@ fn an_edited_crate_recompiles_in_place_and_its_dependents_see_the_edit() {
         "the edited crate recompiles with the same output directory and name"
     );
 }
+
+#[test]
+fn same_named_tests_in_two_packages_keep_their_own_incremental_state() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("ws");
+    let home = tmp.path().join("home");
+    write_workspace(
+        &root,
+        &[
+            ("alpha", "pub fn value() -> u8 { 1 }\n"),
+            ("beta", "pub fn value() -> u8 { 2 }\n"),
+        ],
+    );
+    for name in ["alpha", "beta"] {
+        let test = root.join("crates").join(name).join("tests");
+        fs::create_dir_all(&test).unwrap();
+        fs::write(
+            test.join("it.rs"),
+            format!("#[test]\nfn it() {{ assert!({name}::value() > 0); }}\n"),
+        )
+        .unwrap();
+    }
+    let out = artificer(&home, &root)
+        .args(["test", "--no-run"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let sessions = incremental_sessions(&root);
+    assert_eq!(
+        sessions.iter().filter(|s| s.starts_with("it-")).count(),
+        2,
+        "each package's test has its own incremental state: {sessions:?}"
+    );
+}

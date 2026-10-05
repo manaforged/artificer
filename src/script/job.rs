@@ -54,7 +54,6 @@ impl Job<'_> {
                 .collect(),
         );
         key.feed_str(bin_unit);
-        key.feed(self.source_key.as_bytes());
         Ok(key.digest())
     }
 

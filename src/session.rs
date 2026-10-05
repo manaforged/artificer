@@ -203,11 +203,18 @@ impl Session {
         Ok(hash)
     }
 
-    pub(crate) fn source_key(&self, pkg: &Package) -> Result<String> {
+    pub(crate) fn source_key(
+        &self,
+        pkg: &Package,
+        own: Option<&crate::cargo::Target>,
+    ) -> Result<String> {
         if crate::unit_key::from_registry(pkg) {
             return Ok(format!("registry:{}", pkg.id));
         }
-        Ok(self.source(pkg)?.key.clone())
+        let scope = own
+            .map(|own| crate::unit_key::scope(pkg, own))
+            .unwrap_or_default();
+        Ok(self.source(pkg)?.key(&scope))
     }
 
     fn source(&self, pkg: &Package) -> Result<Arc<crate::key::Source>> {

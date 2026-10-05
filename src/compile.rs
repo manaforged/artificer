@@ -62,6 +62,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
         sess,
         pkg,
         node,
+        unit.lib,
         unit.shape.name(),
         &node.features,
         &unit.types,

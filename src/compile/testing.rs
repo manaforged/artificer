@@ -37,53 +37,40 @@ pub fn compile_tests(
     compile_pkg(sess, meta, id)?;
     let pkg = cargo::package(meta, id)?;
     let node = cargo::node(meta, id)?;
-    let mut bin_exe: Vec<(String, PathBuf)> = Vec::new();
-    for t in pkg
+    let bins: Vec<&cargo::Target> = pkg
         .targets
         .iter()
-        .filter(|t| t.kind.iter().any(|k| k == "bin"))
-    {
-        if Package::covered(t, &node.features) {
-            bin_exe.push((
-                format!("CARGO_BIN_EXE_{}", t.name),
-                compile_bin(sess, pkg, node, t)?,
-            ));
-        }
-    }
-    let mut bins = Vec::new();
+        .filter(|t| t.kind.iter().any(|k| k == "bin") && Package::covered(t, &node.features))
+        .collect();
+    let bin_exe = crate::schedule::fan_out(bins.clone(), |t| {
+        Ok((
+            format!("CARGO_BIN_EXE_{}", t.name),
+            compile_bin(sess, pkg, node, t)?,
+        ))
+    })?;
+    let mut wanted = Vec::new();
     if sel.wants_lib()
         && let Some(lib) = pkg.lib_target()
         && !pkg.is_proc_macro()
     {
-        bins.push(compile_test_one(
-            sess, pkg, node, lib, "lib", true, &bin_exe,
-        )?);
+        wanted.push((lib, "lib", true));
     }
     if sel.wants_bins() {
-        for t in pkg
-            .targets
+        wanted.extend(bins.iter().filter(|t| t.test).map(|t| (*t, "bin", false)));
+    }
+    wanted.extend(
+        pkg.targets
             .iter()
-            .filter(|t| t.kind.iter().any(|k| k == "bin") && t.test)
-        {
-            if Package::covered(t, &node.features) {
-                bins.push(compile_test_one(
-                    sess, pkg, node, t, "bin", false, &bin_exe,
-                )?);
-            }
-        }
-    }
-    for t in pkg
-        .targets
-        .iter()
-        .filter(|t| t.kind.iter().any(|k| k == "test") && sel.wants(&t.name))
-    {
-        if Package::covered(t, &node.features) {
-            bins.push(compile_test_one(
-                sess, pkg, node, t, "int", false, &bin_exe,
-            )?);
-        }
-    }
-    Ok(bins)
+            .filter(|t| {
+                t.kind.iter().any(|k| k == "test")
+                    && sel.wants(&t.name)
+                    && Package::covered(t, &node.features)
+            })
+            .map(|t| (t, "int", false)),
+    );
+    crate::schedule::fan_out(wanted, |(target, label, is_lib)| {
+        compile_test_one(sess, pkg, node, target, label, is_lib, &bin_exe)
+    })
 }
 
 struct TestUnit<'u> {
@@ -223,6 +210,7 @@ fn compile_test_one(
         sess,
         pkg,
         node,
+        target,
         &test_kind(label, &crate_name, unit.harness, bin_exe),
         &node.features,
         &[],
@@ -231,7 +219,7 @@ fn compile_test_one(
         unit.target_tmpdir,
     )?;
     let action = action::Action::begin(&sess.settings.home, action::Kind::Test, &keyed.digest)?
-        .lineage(keyed.lineage);
+        .lineage(keyed.lineage.clone());
     let out = action.out.clone();
     let exe = out.join(executables::exe_file(&crate_name));
     let mut cmd = unit.command(
@@ -239,6 +227,7 @@ fn compile_test_one(
         &action.compile_out(&sess.settings, pkg),
         script.as_ref(),
     )?;
+    keyed.tag(&mut cmd);
     let manifest = unit_key::dep_manifest(sess, node, true, (!is_lib).then_some(pkg.id.as_str()))?;
     if let Some(restored) = unit.restore(&action, &exe, &manifest, &cmd)? {
         return Ok(restored);

@@ -84,6 +84,27 @@ pub(crate) fn worker(worker: usize) {
     WORKER.set(u16::try_from(worker).ok());
 }
 
+#[derive(Clone)]
+pub(crate) struct Context {
+    recorder: Option<Arc<Recorder>>,
+    unit: Option<u32>,
+    worker: Option<u16>,
+}
+
+pub(crate) fn context() -> Context {
+    Context {
+        recorder: current(),
+        unit: UNIT.get(),
+        worker: WORKER.get(),
+    }
+}
+
+pub(crate) fn enter(context: &Context, worker: usize) {
+    attach(context.recorder.clone());
+    UNIT.set(context.unit);
+    WORKER.set(context.worker.or_else(|| u16::try_from(worker).ok()));
+}
+
 pub(crate) fn id() -> Option<String> {
     current().and_then(|recorder| recorder.id.clone())
 }

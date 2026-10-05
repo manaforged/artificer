@@ -94,6 +94,9 @@ fn clippy(sess: &Session, pkg: &Package) -> Option<String> {
 mod feed;
 use feed::{Fed, Feed, feed_inputs};
 
+mod scope;
+pub(crate) use scope::scope;
+
 pub(crate) const DEPS_FILE: &str = "deps.blake3";
 
 pub(crate) fn dep_manifest(
@@ -150,6 +153,12 @@ pub(crate) struct UnitKey {
     pub metadata: String,
 }
 
+impl UnitKey {
+    pub(crate) fn tag(&self, cmd: &mut std::process::Command) {
+        cmd.arg("-C").arg(format!("metadata={}", self.metadata));
+    }
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "the digest must receive every independent rustc unit input"
@@ -158,6 +167,7 @@ pub(crate) fn unit_digest(
     sess: &Session,
     pkg: &Package,
     node: &cargo::Node,
+    own: &cargo::Target,
     kind: &str,
     features: &[String],
     types: &[String],
@@ -168,7 +178,7 @@ pub(crate) fn unit_digest(
     let content = if from_registry(pkg) {
         None
     } else {
-        Some(sess.source_key(pkg)?)
+        Some(sess.source_key(pkg, Some(own))?)
     };
     let mut key = Key::new();
     let Fed {

@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const STAMP_FILE: &str = "stamp";
+const TREE_FILE: &str = "script-tree";
 
 #[derive(Clone)]
 pub struct Script {
@@ -41,7 +42,7 @@ pub fn ensure(
     let Some(script) = pkg.script_target() else {
         bail!("ensure called without custom-build target");
     };
-    let source_key = sess.source_key(pkg)?;
+    let source_key = sess.source_key(pkg, None)?;
     let job = Job {
         pkg,
         settings,
@@ -101,6 +102,7 @@ fn record(action: &Action, job: &Job, recorded: &str, stamp: &str) -> Result<()>
     let settings = job.settings;
     let stamp = input_stamp(job.pkg, settings, recorded, &action.out);
     fs::write(dir.join("script-inputs"), stamp)?;
+    fs::write(dir.join(TREE_FILE), job.source_key)?;
     Ok(())
 }
 
@@ -139,7 +141,9 @@ fn restorable(action: &Action, job: &Job, bin_unit: &str) -> Option<String> {
     let stamp = fs::read_to_string(dir.join("script-inputs")).ok()?;
     let settings = job.settings;
     let current = input_stamp(pkg, settings, &recorded, &action.out);
-    (stamp == current).then_some(recorded)
+    let tree = directives::watches(&recorded)
+        || fs::read_to_string(dir.join(TREE_FILE)).is_ok_and(|tree| tree == job.source_key);
+    (stamp == current && tree).then_some(recorded)
 }
 
 mod job;

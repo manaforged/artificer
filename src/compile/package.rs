@@ -128,7 +128,7 @@ impl<'u> PackageUnit<'u> {
             script,
             self.lto_ok,
         );
-        cmd.arg("-C").arg(format!("metadata={}", keyed.metadata));
+        keyed.tag(&mut cmd);
         cmd.arg("-C").arg(format!("extra-filename=-{stem}"));
         invoke::add_externs(
             &mut cmd,

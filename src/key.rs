@@ -14,16 +14,61 @@ const SKIP: &[&str] = &[
     ".venv",
 ];
 
+#[derive(Debug, Default)]
+pub(crate) struct Scope {
+    files: std::collections::HashSet<PathBuf>,
+    dirs: Vec<PathBuf>,
+}
+
+impl Scope {
+    pub(crate) fn skip_file(&mut self, rel: PathBuf) {
+        self.files.insert(rel);
+    }
+
+    pub(crate) fn skip_dir(&mut self, rel: PathBuf) {
+        self.dirs.push(rel);
+    }
+
+    fn skips(&self, rel: &Path) -> bool {
+        self.files.contains(rel) || self.dirs.iter().any(|dir| rel.starts_with(dir))
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct Source {
-    pub(crate) key: String,
+    header: blake3::Hasher,
+    entries: Vec<(String, Seen)>,
     env_src: Vec<String>,
     env_all: Vec<String>,
+}
+
+#[derive(Debug)]
+enum Seen {
+    File(String),
+    Link(String),
 }
 
 impl Source {
     pub(crate) fn env(&self, tests: bool) -> &[String] {
         if tests { &self.env_all } else { &self.env_src }
+    }
+
+    pub(crate) fn key(&self, scope: &Scope) -> String {
+        let mut hasher = self.header.clone();
+        for (rel, seen) in &self.entries {
+            if scope.skips(Path::new(rel)) {
+                continue;
+            }
+            hasher.update(&(rel.len() as u64).to_le_bytes());
+            hasher.update(rel.as_bytes());
+            let (tag, value) = match seen {
+                Seen::File(digest) => (&b"file"[..], digest),
+                Seen::Link(target) => (&b"link"[..], target),
+            };
+            hasher.update(tag);
+            feed(&mut hasher, value.as_bytes());
+        }
+        hex(&hasher)
     }
 }
 
@@ -38,36 +83,33 @@ pub(crate) fn lib(
     let files = collect(pkg, pkg, skip)?;
     let src_only = pkg.join("src").is_dir();
     let mut memo = crate::digest::Memo::new(home);
-    let mut hasher = blake3::Hasher::new();
+    let mut header = blake3::Hasher::new();
     let (mut env_src, mut env_all) = (Vec::new(), Vec::new());
-    feed(&mut hasher, rustc.as_bytes());
-    feed(&mut hasher, name.as_bytes());
-    feed(&mut hasher, edition.as_bytes());
-    for f in &files {
-        hasher.update(&(f.rel.len() as u64).to_le_bytes());
-        hasher.update(f.rel.as_bytes());
-        match &f.data {
+    feed(&mut header, rustc.as_bytes());
+    feed(&mut header, name.as_bytes());
+    feed(&mut header, edition.as_bytes());
+    let mut entries = Vec::with_capacity(files.len());
+    for f in files {
+        let seen = match f.data {
             Data::File { canonical, meta } => {
-                let scan = memo.known(canonical, meta)?;
-                hasher.update(b"file");
-                feed(&mut hasher, scan.digest.as_bytes());
+                let scan = memo.known(&canonical, &meta)?;
                 if !src_only || Path::new(&f.rel).starts_with("src") {
                     env_src.extend(scan.env.iter().cloned());
                 }
                 env_all.extend(scan.env);
+                Seen::File(scan.digest)
             }
-            Data::Link(target) => {
-                hasher.update(b"link");
-                feed(&mut hasher, target.to_string_lossy().as_bytes());
-            }
-        }
+            Data::Link(target) => Seen::Link(target.to_string_lossy().into_owned()),
+        };
+        entries.push((f.rel, seen));
     }
     for names in [&mut env_src, &mut env_all] {
         names.sort();
         names.dedup();
     }
     Ok(Source {
-        key: hex(&hasher),
+        header,
+        entries,
         env_src,
         env_all,
     })

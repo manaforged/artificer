@@ -52,12 +52,27 @@ fn link_tree(from: &Path, to: &Path) -> Result<()> {
         if entry.file_type()?.is_dir() {
             fs::create_dir_all(&target).with_context(|| format!("create {}", target.display()))?;
             link_tree(&source, &target)?;
-        } else if fs::hard_link(&source, &target).is_err() {
-            fs::copy(&source, &target)
-                .with_context(|| format!("copy {} to {}", source.display(), target.display()))?;
+        } else {
+            link_file(&source, &target)?;
         }
     }
     Ok(())
+}
+
+fn link_file(source: &Path, target: &Path) -> Result<()> {
+    match fs::remove_file(target) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error).with_context(|| format!("replace {}", target.display()));
+        }
+    }
+    if fs::hard_link(source, target).is_ok() {
+        return Ok(());
+    }
+    fs::copy(source, target)
+        .map(drop)
+        .with_context(|| format!("copy {} to {}", source.display(), target.display()))
 }
 
 fn scratch(name: &OsStr) -> bool {

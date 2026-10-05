@@ -24,6 +24,7 @@ pub(super) fn ship_outputs(
             ));
         }
     }
+    let mut others = Vec::new();
     for (i, t) in pkg
         .targets
         .iter()
@@ -46,9 +47,12 @@ pub(super) fn ship_outputs(
         if first {
             v.push((name, art.path.clone()));
         } else {
-            v.push((name, compile_bin(sess, pkg, node, t)?));
+            others.push((name, t));
         }
     }
+    v.extend(crate::schedule::fan_out(others, |(name, t)| {
+        Ok((name, compile_bin(sess, pkg, node, t)?))
+    })?);
     Ok(v)
 }
 
@@ -192,6 +196,7 @@ fn compile_exe(
         sess,
         pkg,
         node,
+        target,
         &format!("{label}-{crate_name}"),
         &node.features,
         &["bin".to_string()],
@@ -200,11 +205,12 @@ fn compile_exe(
         false,
     )?;
     let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &keyed.digest)?
-        .lineage(keyed.lineage);
+        .lineage(keyed.lineage.clone());
     let exe = action.out.join(exe_file(&crate_name));
     let run = Exe { sess, pkg, target };
     let compile_out = action.compile_out(&sess.settings, pkg);
     let mut cmd = run.command(node, set, label == "example", &compile_out, script.as_ref())?;
+    keyed.tag(&mut cmd);
     let manifest = unit_key::dep_manifest(
         sess,
         node,
