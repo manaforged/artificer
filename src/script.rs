@@ -143,7 +143,7 @@ fn restorable(action: &Action, job: &Job, bin_unit: &str) -> Option<String> {
     let current = input_stamp(pkg, settings, &recorded, &action.out);
     let tree = directives::watches(&recorded)
         || fs::read_to_string(dir.join(TREE_FILE)).is_ok_and(|tree| tree == job.source_key);
-    (stamp == current && tree).then_some(recorded)
+    (stamp == current && tree && directives::searches_resolve(&recorded)).then_some(recorded)
 }
 
 mod job;
