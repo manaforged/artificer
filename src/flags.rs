@@ -13,6 +13,11 @@ fn stamp_id(kind: &str, rustc: &str) -> String {
     let mut h = blake3::Hasher::new();
     h.update(kind.as_bytes());
     h.update(rustc.as_bytes());
+    h.update(
+        std::env::var_os(crate::profile::BOOTSTRAP.0)
+            .unwrap_or_default()
+            .as_encoded_bytes(),
+    );
     format!("{kind}-{}", &h.finalize().to_hex()[..16])
 }
 

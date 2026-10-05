@@ -9,6 +9,10 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- The `threads` mode is on by default. It passes rustc `-Z threads` only
+  when rustc accepts the flag, so builds with a stable toolchain do not
+  change. A probe made with `RUSTC_BOOTSTRAP` set no longer applies to
+  builds without it, where rustc would reject the flag.
 - `artificer clean` deletes the compile directories under
   `target/<profile>/artificer/`, except one a running build is compiling
   in. A pipelined dependent reads its dependency's metadata from the

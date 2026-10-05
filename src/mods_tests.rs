@@ -3,10 +3,10 @@ use super::*;
 #[test]
 fn fresh_defaults_keep_cargo_compiler_choices() -> Result<()> {
     let mods = Mods::default();
-    for name in ["rmeta", "meta-cache", "slim-deps"] {
+    for name in ["rmeta", "meta-cache", "slim-deps", "threads"] {
         assert!(mods.get(name)?, "{name} should default on");
     }
-    for name in ["sweep", "threads", "serve"] {
+    for name in ["sweep", "serve"] {
         assert!(!mods.get(name)?, "{name} should require opt-in");
     }
     Ok(())

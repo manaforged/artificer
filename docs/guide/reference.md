@@ -129,7 +129,7 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | rmeta | on | Emit metadata-only artifacts for check where possible |
 | slim-deps | on | Compile crates.io and git dependencies with line-table debug info; workspace and path crates keep the profile's debug info |
 | meta-cache | on | Cache Cargo metadata outside the workspace target directory |
-| threads | off | Use up to 8 rustc parallel frontend threads when rustc accepts them |
+| threads | on | Use up to 8 rustc parallel frontend threads when rustc accepts them, as a nightly toolchain does; stable rustc does not, so stable builds are unchanged |
 | trust | on | Skip checks that only report errors in crates.io dependencies when rustc accepts `-Z trusted-crate` |
 | early | off | When rustc accepts `-Z early-metadata`, pass it in every build. In `check` builds, start a crate's dependents once rustc writes its early metadata (item interfaces, before function bodies) |
 | serve | off | Send handled builds to the local daemon and start it on demand. Not available on Windows |

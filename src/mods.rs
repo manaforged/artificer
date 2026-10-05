@@ -40,7 +40,7 @@ impl Default for Mods {
             rmeta: true,
             slim_deps: true,
             meta_cache: true,
-            threads: false,
+            threads: true,
             trust: true,
             early: false,
             serve: false,

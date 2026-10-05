@@ -98,6 +98,32 @@ fn the_threads_mode_reaches_rustc() {
     assert!(alpha.contains("\"threads="), "{alpha}");
 }
 
+#[test]
+fn a_bootstrap_probe_does_not_carry_into_a_build_without_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("ws");
+    let home = tmp.path().join("home");
+    write_workspace(&root, &[("alpha", "pub fn value() -> u8 { 1 }\n")]);
+    for (bootstrap, body) in [
+        (true, "pub fn value() -> u8 { 1 }\n"),
+        (false, "pub fn value() -> u8 { 2 }\n"),
+    ] {
+        fs::write(root.join("crates/alpha/src/lib.rs"), body).unwrap();
+        let mut build = artificer(&home, &root);
+        if bootstrap {
+            build.env("RUSTC_BOOTSTRAP", "1");
+        } else {
+            build.env_remove("RUSTC_BOOTSTRAP");
+        }
+        let out = build.arg("build").output().unwrap();
+        assert!(
+            out.status.success(),
+            "bootstrap {bootstrap}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn rustc_draws_threads_from_a_pool_that_ends_with_the_build() {
