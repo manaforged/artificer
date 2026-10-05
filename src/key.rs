@@ -14,6 +14,64 @@ const SKIP: &[&str] = &[
     ".venv",
 ];
 
+#[derive(Debug, Default)]
+pub(crate) struct Scope {
+    files: std::collections::HashSet<PathBuf>,
+    dirs: Vec<PathBuf>,
+}
+
+impl Scope {
+    pub(crate) fn skip_file(&mut self, rel: PathBuf) {
+        self.files.insert(rel);
+    }
+
+    pub(crate) fn skip_dir(&mut self, rel: PathBuf) {
+        self.dirs.push(rel);
+    }
+
+    fn skips(&self, rel: &Path) -> bool {
+        self.files.contains(rel) || self.dirs.iter().any(|dir| rel.starts_with(dir))
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct Source {
+    header: blake3::Hasher,
+    entries: Vec<(String, Seen)>,
+    env_src: Vec<String>,
+    env_all: Vec<String>,
+}
+
+#[derive(Debug)]
+enum Seen {
+    File(String),
+    Link(String),
+}
+
+impl Source {
+    pub(crate) fn env(&self, tests: bool) -> &[String] {
+        if tests { &self.env_all } else { &self.env_src }
+    }
+
+    pub(crate) fn key(&self, scope: &Scope) -> String {
+        let mut hasher = self.header.clone();
+        for (rel, seen) in &self.entries {
+            if scope.skips(Path::new(rel)) {
+                continue;
+            }
+            hasher.update(&(rel.len() as u64).to_le_bytes());
+            hasher.update(rel.as_bytes());
+            let (tag, value) = match seen {
+                Seen::File(digest) => (&b"file"[..], digest),
+                Seen::Link(target) => (&b"link"[..], target),
+            };
+            hasher.update(tag);
+            feed(&mut hasher, value.as_bytes());
+        }
+        hex(&hasher)
+    }
+}
+
 pub(crate) fn lib(
     home: Option<&Path>,
     pkg: &Path,
@@ -21,28 +79,40 @@ pub(crate) fn lib(
     name: &str,
     edition: &str,
     skip: &[&Path],
-) -> Result<String> {
+) -> Result<Source> {
     let files = collect(pkg, pkg, skip)?;
+    let src_only = pkg.join("src").is_dir();
     let mut memo = crate::digest::Memo::new(home);
-    let mut hasher = blake3::Hasher::new();
-    feed(&mut hasher, rustc.as_bytes());
-    feed(&mut hasher, name.as_bytes());
-    feed(&mut hasher, edition.as_bytes());
-    for f in &files {
-        hasher.update(&(f.rel.len() as u64).to_le_bytes());
-        hasher.update(f.rel.as_bytes());
-        match &f.data {
-            Data::File(path) => {
-                hasher.update(b"file");
-                feed(&mut hasher, memo.file(path)?.as_bytes());
+    let mut header = blake3::Hasher::new();
+    let (mut env_src, mut env_all) = (Vec::new(), Vec::new());
+    feed(&mut header, rustc.as_bytes());
+    feed(&mut header, name.as_bytes());
+    feed(&mut header, edition.as_bytes());
+    let mut entries = Vec::with_capacity(files.len());
+    for f in files {
+        let seen = match f.data {
+            Data::File { canonical, meta } => {
+                let scan = memo.known(&canonical, &meta)?;
+                if !src_only || Path::new(&f.rel).starts_with("src") {
+                    env_src.extend(scan.env.iter().cloned());
+                }
+                env_all.extend(scan.env);
+                Seen::File(scan.digest)
             }
-            Data::Link(target) => {
-                hasher.update(b"link");
-                feed(&mut hasher, target.to_string_lossy().as_bytes());
-            }
-        }
+            Data::Link(target) => Seen::Link(target.to_string_lossy().into_owned()),
+        };
+        entries.push((f.rel, seen));
     }
-    Ok(hex(&hasher))
+    for names in [&mut env_src, &mut env_all] {
+        names.sort();
+        names.dedup();
+    }
+    Ok(Source {
+        header,
+        entries,
+        env_src,
+        env_all,
+    })
 }
 
 fn feed(hasher: &mut blake3::Hasher, bytes: &[u8]) {
@@ -60,7 +130,10 @@ struct File {
 }
 
 enum Data {
-    File(PathBuf),
+    File {
+        canonical: PathBuf,
+        meta: fs::Metadata,
+    },
     Link(PathBuf),
 }
 
@@ -84,7 +157,7 @@ fn collect_into(
         "symlink cycle while scanning {}",
         dir.display()
     );
-    ancestors.push(canonical);
+    ancestors.push(canonical.clone());
     let result = (|| {
         let mut entries: Vec<_> = fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
         entries.sort_by_key(|e| e.file_name());
@@ -112,9 +185,14 @@ fn collect_into(
             if meta.is_dir() {
                 collect_into(root, &path, skip, ancestors, out)?;
             } else if meta.is_file() {
+                let canonical = if ft.is_symlink() {
+                    fs::canonicalize(&path).unwrap_or(path)
+                } else {
+                    canonical.join(&name)
+                };
                 out.push(File {
                     rel,
-                    data: Data::File(path),
+                    data: Data::File { canonical, meta },
                 });
             }
         }
@@ -128,40 +206,7 @@ fn collect_into(
 #[path = "key_tests.rs"]
 mod tests;
 
-#[must_use]
-pub fn env_names(pkg: &Path, skip: &[&Path], tests: bool) -> Vec<String> {
-    let roots: Vec<PathBuf> = if tests {
-        vec![pkg.to_path_buf()]
-    } else {
-        let src = pkg.join("src");
-        if src.is_dir() {
-            vec![src]
-        } else {
-            vec![pkg.to_path_buf()]
-        }
-    };
-    let mut files = Vec::new();
-    for root in &roots {
-        if let Ok(mut found) = collect(root, root, skip) {
-            files.append(&mut found);
-        }
-    }
-    let mut names = Vec::new();
-    for f in files {
-        let Data::File(path) = f.data else {
-            continue;
-        };
-        let Ok(text) = fs::read_to_string(path) else {
-            continue;
-        };
-        scan_env(&text, &mut names);
-    }
-    names.sort();
-    names.dedup();
-    names
-}
-
-fn scan_env(text: &str, out: &mut Vec<String>) {
+pub(crate) fn scan_env(text: &str, out: &mut Vec<String>) {
     let bytes = text.as_bytes();
     let mut at = 0;
     while let Some(found) = text[at..].find("env!") {
@@ -197,6 +242,6 @@ mod compiler;
 #[cfg(test)]
 pub(crate) use compiler::file_identity;
 pub(crate) use compiler::{
-    explicit_rustc_identity, probe_memo, rustc_print_cfg_with_flags, toolchain_key,
+    explicit_rustc_identity, probe_memo, rustc_exe, rustc_print_cfg_with_flags, toolchain_key,
 };
 pub use compiler::{rustc_bin, rustc_host, rustc_print_cfg, rustc_version, rustc_version_in};

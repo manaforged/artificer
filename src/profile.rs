@@ -24,7 +24,7 @@ pub(crate) use passes::{BOOTSTRAP, FLAGS, harvest};
 pub use phase::{Phase, ProcessPhase, RunPhase, SetupPhase, Stage, UnitPhase, WrapperPhase};
 pub use record::{Recording, begin, request_timings, span};
 pub(crate) use record::{
-    attach, capture, current, fallback, id, merge, note_passes, note_target, worker,
+    attach, capture, context, current, enter, fallback, id, merge, note_passes, note_target, worker,
 };
 pub(crate) use units::{MetaMark, PlannedUnit, meta_mark, plan, unit};
 pub(crate) use usage::{output, status, status_lines};

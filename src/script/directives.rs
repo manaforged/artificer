@@ -7,6 +7,13 @@ fn directive<'a>(line: &'a str, name: &str) -> Option<&'a str> {
         .strip_prefix(name)
 }
 
+pub(super) fn watches(output: &str) -> bool {
+    output.lines().any(|line| {
+        directive(line, "rerun-if-changed=").is_some()
+            || directive(line, "rerun-if-env-changed=").is_some()
+    })
+}
+
 #[must_use]
 pub fn metadata(output: &str) -> Vec<(String, String)> {
     const RESERVED: [&str; 12] = [

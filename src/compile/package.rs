@@ -86,6 +86,7 @@ impl<'u> PackageUnit<'u> {
         &self,
         node: &cargo::Node,
         out: &Path,
+        stem: &str,
         script: Option<&Script>,
         keyed: &unit_key::UnitKey,
     ) -> Result<Command> {
@@ -93,7 +94,11 @@ impl<'u> PackageUnit<'u> {
         let link = self.shape.links_output();
         let mut cmd = sess.settings.rustc_cmd(pkg);
         if link {
-            cmd.arg("--emit=dep-info,metadata,link");
+            cmd.arg(if self.proc_macro {
+                "--emit=dep-info,link"
+            } else {
+                "--emit=dep-info,metadata,link"
+            });
             for kind in &self.types {
                 cmd.arg("--crate-type").arg(kind);
             }
@@ -123,9 +128,8 @@ impl<'u> PackageUnit<'u> {
             script,
             self.lto_ok,
         );
-        cmd.arg("-C").arg(format!("metadata={}", keyed.metadata));
-        cmd.arg("-C")
-            .arg(format!("extra-filename=-{}", keyed.digest));
+        keyed.tag(&mut cmd);
+        cmd.arg("-C").arg(format!("extra-filename=-{stem}"));
         invoke::add_externs(
             &mut cmd,
             sess,

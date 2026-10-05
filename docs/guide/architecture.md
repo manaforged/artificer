@@ -79,11 +79,13 @@ graph nodes concurrently. A library starts once its dependencies have
 written their metadata, as Cargo's pipelining does; a unit that links
 waits for every dependency to finish. A package's build script is its own
 unit: it starts once its build-dependencies are built and the build
-scripts of its `links` dependencies have run.
+scripts of its `links` dependencies have run. A package's tests, checked
+targets, and extra binaries compile at the same time through
+`schedule::fan_out`, the pool that also runs test binaries.
 
 src/compile.rs builds rustc and rustdoc commands through src/invoke.rs.
-It stores dependency artifacts in the session so each downstream key
-names the exact upstream artifact.
+It stores each unit's digest in the session so each downstream key
+names the exact upstream unit.
 
 ## Unit keys
 
@@ -93,10 +95,17 @@ Artificer store. It hashes file paths and bytes in a stable order. It
 follows valid source symlinks, includes each link target in the key, and
 rejects directory symlink cycles.
 
-src/unit_key.rs combines the package-content digest with compiler
-identity, target kind, crate types, enabled features, profile and lint
-flags, relevant environment variables, build-script output, and
-dependency artifact names.
+src/unit_key/scope.rs narrows the tree for each unit. A unit leaves out
+the files of the package's other integration tests, examples, benches,
+and build script. A library or binary also leaves out the `tests`,
+`examples`, and `benches` directories. A file read from outside the
+narrowed tree is still checked against rustc's dependency records
+before reuse.
+
+src/unit_key.rs combines the package-content digest with package
+identity, compiler identity, target kind, crate types, enabled features,
+profile and lint flags, relevant environment variables, build-script
+output, and dependency unit digests.
 
 Registry package identity replaces a tree scan only when the manifest is
 inside Cargo's registry directory. Vendored and source-replaced packages
@@ -109,7 +118,11 @@ ARTIFICER_HOME/units/LAYOUT/u-DIGEST, where LAYOUT is the version prefix
 from src/store.rs (v5). A complete unit has an ok marker and an out
 directory.
 
-rustc writes directly into the unit directory under an operating-system file lock.
+rustc writes registry and git crates directly into the unit directory under an
+operating-system file lock. Workspace crates compile in a stable directory under
+`target/<profile>/.artificer/`, which keeps rustc's incremental cache valid, and
+their outputs are then linked into the unit directory. Metadata is linked as soon as
+rustc writes it, so a pipelined dependent reads only store paths.
 The ok marker is written only after successful compilation and dependency recording.
 Builds retain read locks until their compilers and executables finish using the units.
 Replacement and garbage collection require an exclusive lock. A conflicting build

@@ -100,14 +100,17 @@ fn stream(
         };
         let ready = early.and_then(|early| match notice {
             Emitted::Metadata(path) if path.file_name() == early.rmeta.file_name() => {
-                Some((early, MetaStage::Full))
+                Some((early, MetaStage::Full, path, &early.rmeta))
             }
             Emitted::EarlyMetadata(path) if path.file_name() == early.early_rmeta.file_name() => {
-                Some((early, MetaStage::Early))
+                Some((early, MetaStage::Early, path, &early.early_rmeta))
             }
             _ => None,
         });
-        if let Some((early, stage)) = ready {
+        if let Some((early, stage, emitted, published)) = ready {
+            if emitted != *published {
+                super::staging::publish_file(&emitted, published).map_err(std::io::Error::other)?;
+            }
             sess.put(pkg.id.clone(), early.artifact.clone());
             if let Some(signal) = &signal {
                 signal.metadata_ready(stage);
@@ -161,6 +164,7 @@ pub(crate) fn run_rustc_inner(
     if std::env::var_os("ARTIFICER_TRACE").is_some() || crate::out::trace() {
         crate::out::diag(format!("ARTIFICER_CMD {}: {:?}", pkg.name, cmd));
     }
+    let staged = super::staging::stage(&sess.settings.home, cmd, out)?;
     let path = out.join(DIAGNOSTICS);
     let file = File::create(&path).with_context(|| format!("create {}", path.display()))?;
     sess.announce(pkg, TargetKind::of(target) == TargetKind::BuildScript);
@@ -170,6 +174,11 @@ pub(crate) fn run_rustc_inner(
         cmd.env(crate::profile::BOOTSTRAP.0, crate::profile::BOOTSTRAP.1);
     }
     let status = stream(cmd, sess, pkg, file, early).context("rustc")?;
+    if let Some(staged) = &staged
+        && status.success()
+    {
+        staged.publish(out)?;
+    }
     if passes {
         crate::profile::note_passes(
             crate::profile::harvest(&path).with_context(|| format!("read {}", path.display()))?,

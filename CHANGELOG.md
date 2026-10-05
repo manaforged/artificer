@@ -9,6 +9,46 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- The `threads` mode is on by default. It passes rustc `-Z threads` only
+  when rustc accepts the flag, so builds with a stable toolchain do not
+  change. A probe made with `RUSTC_BOOTSTRAP` set no longer applies to
+  builds without it, where rustc would reject the flag.
+- `artificer clean` deletes the compile directories under
+  `target/<profile>/.artificer/`, except one a running build is compiling
+  in. A pipelined dependent reads its dependency's metadata from the
+  cache, so a clean or a second build cannot remove it mid-build.
+- A unit is keyed on its own target's files. Editing an integration
+  test, example, or bench no longer rebuilds the library, the binaries,
+  or the other tests, as with Cargo. Before, any file in the package
+  changed every unit's key, which also caught a proc macro reading an
+  untracked file under `tests`. Files another target's compile reads
+  are now tracked through rustc's dependency records only, as Cargo does.
+- A build script that emits `rerun-if-changed` or `rerun-if-env-changed`
+  runs again only when those inputs change, as with Cargo. A script that
+  emits neither still runs again when any file in its package changes.
+  Crates with build scripts recompile once after the upgrade.
+- A package's tests, checked targets, and extra binaries compile at the
+  same time, as with Cargo. They had compiled one at a time, so a library
+  edit followed by `cargo test` rebuilt each test binary in turn.
+- Tests, examples, and binaries pass rustc a `-C metadata` value, as
+  with Cargo, so same-named tests in two packages keep separate
+  incremental state.
+- Rebuilding an edited workspace crate reuses rustc's incremental cache,
+  as Cargo does. Each workspace crate compiles in a stable directory
+  under `target/<profile>/.artificer/`, and its outputs are then published
+  to the cache. Each edit had compiled in a new directory, which made
+  rustc recompile the whole crate. The first build after upgrading
+  recompiles workspace crates once.
+- An unchanged source file costs one file-system check per build. The
+  digest cache records which environment variables a file reads, and a
+  crates.io dependency's build script is keyed on the package version
+  instead of a scan of its files.
+- rustc runs straight from the toolchain's sysroot, as with Cargo,
+  instead of through the rustup proxy on every compile. With `RUSTC` set,
+  that program runs as given.
+- A proc-macro crate compiles with Cargo's `build-override` defaults, as
+  Cargo does: no debug info and no separate metadata file. It had used
+  the build's profile, which put full debug info into every derive crate.
 - A new `slim-deps` mode, on by default, compiles crates.io and git
   dependencies with line-table debug info. Workspace and path crates keep
   the profile's debug info, so they debug as before, and backtraces keep

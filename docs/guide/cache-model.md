@@ -2,10 +2,18 @@
 
 A unit is one crate compiled with one set of inputs. A unit key covers
 what the compile actually reads: compiler identity, compile options,
-features, profile inputs, lint flags, dependency artifacts, build-script
+features, profile inputs, lint flags, dependency units, build-script
 output, relevant environment values, and package content. Source
 symlinks are followed and their targets included. Registry checkouts are
 keyed by package identity instead of a tree scan.
+
+Package content is scoped to the target. A library or binary is not
+keyed on the package's `tests`, `examples`, and `benches` directories,
+and an integration test, example, or bench is not keyed on the other
+targets' own files. Editing one test rebuilds only that test, as with
+Cargo. A file that a compile reads from another target's tree, such as
+an `include_str!` of a test fixture, is caught by the dependency-record
+check below.
 
 The checkout path is not keyed directly. An input that contains the path,
 such as `CARGO_MANIFEST_DIR` read at compile time, an absolute path in
@@ -26,7 +34,9 @@ dependency resolution, which Artificer reads from Cargo, so the patched
 source is already part of each package identity.
 
 A build script runs once per key. Its `OUT_DIR` is stored with the unit,
-and `rerun-if-changed` and `rerun-if-env-changed` are honored.
+and `rerun-if-changed` and `rerun-if-env-changed` are honored. A script
+that emits neither runs again when any file in its package changes, as
+with Cargo.
 
 Before reusing a unit, Artificer validates rustc's dependency records
 against current file contents and environment values. This includes

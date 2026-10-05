@@ -188,88 +188,38 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
         }
     }
     let capture = crate::out::current().is_some();
-    let workers = crate::schedule::job_cap().min(jobs.len().max(1));
-    let code = Mutex::new(0i32);
-    let failed = Mutex::new(None::<anyhow::Error>);
-    let next = Mutex::new(0usize);
-    let jobs: Mutex<Vec<Option<Job>>> = Mutex::new(jobs.into_iter().map(Some).collect());
-    std::thread::scope(|scope| {
-        for worker in 0..workers {
-            let sink = crate::out::current();
-            let recorder = crate::profile::current();
-            let (sess, code, failed, next, jobs) = (&sess, &code, &failed, &next, &jobs);
-            scope.spawn(move || {
-                crate::out::attach(sink);
-                crate::profile::attach(recorder);
-                crate::profile::worker(worker);
-                loop {
-                    let job = {
-                        let mut n = next.lock().expect("test index");
-                        let mut jobs = jobs.lock().expect("test jobs");
-                        if *n >= jobs.len() {
-                            return;
-                        }
-                        let i = *n;
-                        *n += 1;
-                        jobs[i].take()
-                    };
-                    let Some(job) = job else {
-                        continue;
-                    };
-                    let mut run = match job {
-                        Job::Bin { pkg, exe, label } => {
-                            crate::out::status(crate::out::Status::Running, label);
-                            let mut run = sess.settings.exec_cmd(&exe);
-                            run.current_dir(pkg.root());
-                            cargo::set_package_env(&mut run, pkg);
-                            run.args(&opts.args);
-                            run
-                        }
-                        Job::Doc { name, cmd } => {
-                            crate::out::err(format!("artificer: doctests {name}"));
-                            cmd
-                        }
-                    };
-                    crate::jobs::isolate(&mut run);
-                    let ran = crate::profile::span(crate::profile::RunPhase::TestRun, || {
-                        if capture {
-                            crate::profile::output(&mut run).map(|out| {
-                                crate::out::replay(&out.stdout, &out.stderr);
-                                out.status
-                            })
-                        } else {
-                            crate::profile::status(&mut run)
-                        }
-                    });
-                    let status = match ran {
-                        Ok(status) => status,
-                        Err(e) => {
-                            let mut failed = failed.lock().expect("test spawn");
-                            if failed.is_none() {
-                                *failed = Some(e.into());
-                            }
-                            return;
-                        }
-                    };
-                    if !status.success() {
-                        let mut code = code.lock().expect("test code");
-                        if *code == 0 {
-                            *code = status.code().unwrap_or(1);
-                        }
-                    }
-                }
-            });
-        }
-    });
-    if let Some(e) = failed
-        .into_inner()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-    {
-        return Err(e);
-    }
-    Ok(code
-        .into_inner()
-        .unwrap_or_else(std::sync::PoisonError::into_inner))
+    let statuses = crate::schedule::fan_out(jobs, |job| {
+        let mut run = match job {
+            Job::Bin { pkg, exe, label } => {
+                crate::out::status(crate::out::Status::Running, label);
+                let mut run = sess.settings.exec_cmd(&exe);
+                run.current_dir(pkg.root());
+                cargo::set_package_env(&mut run, pkg);
+                run.args(&opts.args);
+                run
+            }
+            Job::Doc { name, cmd } => {
+                crate::out::err(format!("artificer: doctests {name}"));
+                cmd
+            }
+        };
+        crate::jobs::isolate(&mut run);
+        let status = crate::profile::span(crate::profile::RunPhase::TestRun, || {
+            if capture {
+                crate::profile::output(&mut run).map(|out| {
+                    crate::out::replay(&out.stdout, &out.stderr);
+                    out.status
+                })
+            } else {
+                crate::profile::status(&mut run)
+            }
+        })?;
+        Ok(status)
+    })?;
+    Ok(statuses
+        .iter()
+        .find(|status| !status.success())
+        .map_or(0, |status| status.code().unwrap_or(1)))
 }
 
 pub(super) fn place_tests<'b>(

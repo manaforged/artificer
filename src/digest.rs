@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const MEMO_VERSION: u32 = 1;
+const MEMO_VERSION: u32 = 2;
 const RACY_WINDOW: Duration = Duration::from_secs(2);
 const MEMO_DIR: &str = "digests";
 const SHARDS: u8 = 64;
@@ -24,6 +24,13 @@ struct Stamp {
 struct Entry {
     stamp: Stamp,
     digest: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    env: Vec<String>,
+}
+
+pub(crate) struct Scan {
+    pub(crate) digest: String,
+    pub(crate) env: Vec<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -126,9 +133,39 @@ fn read_shard(path: &Path) -> Shard {
         .unwrap_or_default()
 }
 
-fn hash(path: &Path) -> Result<String> {
+fn scan(path: &Path) -> Result<Scan> {
     let bytes = fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    Ok(blake3::hash(&bytes).to_hex().to_string())
+    let mut env = Vec::new();
+    if let Ok(text) = std::str::from_utf8(&bytes) {
+        crate::key::scan_env(text, &mut env);
+    }
+    Ok(Scan {
+        digest: blake3::hash(&bytes).to_hex().to_string(),
+        env,
+    })
+}
+
+fn lookup(shard: &Path, canonical: &Path, current: &Stamp) -> Option<Scan> {
+    let found = |loaded: &Shard| {
+        loaded
+            .entries
+            .get(canonical)
+            .filter(|entry| entry.stamp == *current)
+            .map(|entry| Scan {
+                digest: entry.digest.clone(),
+                env: entry.env.clone(),
+            })
+    };
+    if let Some(loaded) = loaded()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(shard)
+    {
+        return found(loaded);
+    }
+    let read = read_shard(shard);
+    let mut all = loaded().lock().unwrap_or_else(PoisonError::into_inner);
+    found(all.entry(shard.to_path_buf()).or_insert(read))
 }
 
 pub(crate) fn file(home: Option<&Path>, path: &Path) -> Result<String> {
@@ -149,52 +186,48 @@ impl<'a> Memo<'a> {
     }
 
     pub(crate) fn file(&mut self, path: &Path) -> Result<String> {
-        let Some(home) = self.home else {
-            return hash(path);
-        };
+        if self.home.is_none() {
+            return Ok(scan(path)?.digest);
+        }
         let Ok(canonical) = fs::canonicalize(path) else {
-            return hash(path);
+            return Ok(scan(path)?.digest);
         };
-        let Some(before) = fs::metadata(&canonical)
-            .ok()
-            .and_then(|meta| stamp(&canonical, &meta))
-        else {
-            return hash(path);
+        let Ok(meta) = fs::metadata(&canonical) else {
+            return Ok(scan(path)?.digest);
         };
-        let shard = shard_path(home, &canonical);
-        if let Some(hit) = self.lookup(&shard, &canonical, &before) {
+        Ok(self.known(&canonical, &meta)?.digest)
+    }
+
+    pub(crate) fn known(&mut self, canonical: &Path, meta: &fs::Metadata) -> Result<Scan> {
+        let (Some(home), Some(before)) = (self.home, stamp(canonical, meta)) else {
+            return scan(canonical);
+        };
+        let shard = shard_path(home, canonical);
+        if let Some(hit) = lookup(&shard, canonical, &before) {
             return Ok(hit);
         }
-        let digest = hash(&canonical)?;
-        let after = fs::metadata(&canonical)
+        let found = scan(canonical)?;
+        let after = fs::metadata(canonical)
             .ok()
-            .and_then(|meta| stamp(&canonical, &meta));
+            .and_then(|meta| stamp(canonical, &meta));
         if after == Some(before) && settled(&before) {
             let entry = Entry {
                 stamp: before,
-                digest: digest.clone(),
+                digest: found.digest.clone(),
+                env: found.env.clone(),
             };
             let mut all = loaded().lock().unwrap_or_else(PoisonError::into_inner);
             let loaded = all.entry(shard.clone()).or_default();
-            loaded.entries.insert(canonical.clone(), entry.clone());
-            loaded.fresh.insert(canonical, entry);
+            loaded
+                .entries
+                .insert(canonical.to_path_buf(), entry.clone());
+            loaded.fresh.insert(canonical.to_path_buf(), entry);
+            drop(all);
             if !self.dirty.contains(&shard) {
                 self.dirty.push(shard);
             }
         }
-        Ok(digest)
-    }
-
-    fn lookup(&self, shard: &Path, canonical: &Path, current: &Stamp) -> Option<String> {
-        let mut all = loaded().lock().unwrap_or_else(PoisonError::into_inner);
-        let loaded = all
-            .entry(shard.to_path_buf())
-            .or_insert_with(|| read_shard(shard));
-        loaded
-            .entries
-            .get(canonical)
-            .filter(|entry| entry.stamp == *current)
-            .map(|entry| entry.digest.clone())
+        Ok(found)
     }
 
     pub(crate) fn flush(&mut self) {

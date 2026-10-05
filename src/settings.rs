@@ -14,6 +14,7 @@ pub struct Settings {
     pub(crate) workspace_root: PathBuf,
     pub toolchain_dir: PathBuf,
     pub rustc: String,
+    pub rustc_exe: String,
     pub host: String,
     pub wrapper_all: Option<String>,
     pub wrapper_local: Option<String>,
@@ -108,6 +109,16 @@ impl Settings {
             .join(if self.release { "release" } else { "debug" })
     }
 
+    pub(crate) fn compile_dir(&self, pkg: &Package, lineage: Option<&str>) -> Option<PathBuf> {
+        let lineage = lineage?;
+        self.incremental_dir(pkg)?;
+        Some(
+            self.profile_dir()
+                .join(crate::sweep::COMPILE_DIR)
+                .join(lineage),
+        )
+    }
+
     pub(crate) fn incremental_dir(&self, pkg: &Package) -> Option<PathBuf> {
         (self.incremental && pkg.source.is_none())
             .then(|| self.profile_dir().join(crate::sweep::INCREMENTAL_DIR))
@@ -144,6 +155,7 @@ impl Settings {
             key::rustc_version_in(home, dir)
         })?;
         let host = key::rustc_host(&rustc)?;
+        let rustc_exe = key::rustc_exe(home, dir);
         if let Some(name) = crate::gate::gated_env(false) {
             anyhow::bail!("artificer cannot model this environment: {name} is set");
         }
@@ -184,6 +196,7 @@ impl Settings {
             home: crate::resolve_path(home),
             toolchain_dir: dir.to_path_buf(),
             rustc,
+            rustc_exe,
             host,
             wrapper_all,
             wrapper_local,
@@ -258,7 +271,7 @@ impl Settings {
 
     pub(crate) fn rustc_cmd(&self, pkg: &Package) -> Command {
         let chain = self.wrapper_chain(pkg);
-        let rustc = key::rustc_bin();
+        let rustc = &self.rustc_exe;
         let mut cmd = match chain.split_first() {
             Some((program, args)) => {
                 let mut cmd = Command::new(program);

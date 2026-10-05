@@ -351,6 +351,8 @@ pub(crate) fn job_cap() -> usize {
         .max(1)
 }
 
+mod fan;
+pub(crate) use fan::fan_out;
 mod plan;
 mod ready;
 pub(crate) use ready::{MetaStage, signal};

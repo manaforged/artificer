@@ -62,6 +62,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
         sess,
         pkg,
         node,
+        unit.lib,
         unit.shape.name(),
         &node.features,
         &unit.types,
@@ -71,16 +72,23 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
     )?;
     let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &keyed.digest)?
         .lineage(keyed.lineage.clone());
+    sess.note_digest(id, &keyed.digest);
     let out = action.out.clone();
-    let mut cmd = unit.command(node, &out, script.as_ref(), &keyed)?;
+    let compile_out = action.compile_out(&sess.settings, pkg);
+    let stem = if compile_out == out {
+        keyed.digest.as_str()
+    } else {
+        keyed.metadata.as_str()
+    };
+    let mut cmd = unit.command(node, &compile_out, stem, script.as_ref(), &keyed)?;
     let manifest = unit_key::dep_manifest(sess, node, false, None)?;
-    let early = unit.early(&out, &keyed.digest);
+    let early = unit.early(&out, stem);
     let rustc = unit.rustc(&action, &mut cmd, &manifest, early.as_ref())?;
-    let art = unit.artifact(&out, &keyed.digest)?;
+    let art = unit.artifact(&out, stem)?;
     sess.put(id.to_string(), art.clone());
     sess.retain(action.lease()?);
     let shipped = if sess.ship.contains(&pkg.id) {
-        ship_outputs(sess, pkg, node, unit.lib, &out, &keyed.digest, &art)?
+        ship_outputs(sess, pkg, node, unit.lib, &out, stem, &art)?
     } else {
         Vec::new()
     };

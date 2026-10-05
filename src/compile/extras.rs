@@ -16,15 +16,18 @@ pub fn check_extras(
         .bin_target()
         .filter(|_| !has_lib)
         .map(|t| t.name.as_str());
-    for (t, kind, mode) in sel.units(pkg, feats)? {
-        let Some((scan, self_extern, with_exe)) =
-            scan_for(kind, mode, main == Some(t.name.as_str()), has_lib)
-        else {
-            continue;
-        };
+    let units: Vec<_> = sel
+        .units(pkg, feats)?
+        .into_iter()
+        .filter_map(|(t, kind, mode)| {
+            let found = scan_for(kind, mode, main == Some(t.name.as_str()), has_lib)?;
+            Some((t, found))
+        })
+        .collect();
+    crate::schedule::fan_out(units, |(t, (scan, self_extern, with_exe))| {
         let exe: &[(String, PathBuf)] = if with_exe { &bin_exe } else { &[] };
-        check_one(sess, pkg, node, t, scan, self_extern, exe)?;
-    }
+        check_one(sess, pkg, node, t, scan, self_extern, exe)
+    })?;
     Ok(())
 }
 
@@ -130,6 +133,7 @@ fn check_one(
         sess,
         pkg,
         node,
+        target,
         &kind,
         &node.features,
         &[],
@@ -138,7 +142,7 @@ fn check_one(
         target_tmpdir,
     )?;
     let action = action::Action::begin(&sess.settings.home, action::Kind::Unit, &keyed.digest)?
-        .lineage(keyed.lineage);
+        .lineage(keyed.lineage.clone());
     let mut cmd = sess.settings.rustc_cmd(pkg);
     cmd.arg("--emit=dep-info,metadata");
     if harness {
@@ -155,11 +159,12 @@ fn check_one(
         target,
         false,
         &node.features,
-        &action.out,
+        &action.compile_out(&sess.settings, pkg),
         script.as_ref(),
         false,
     );
-    let cmd = scan_args(sess, &unit, cmd)?;
+    let mut cmd = scan_args(sess, &unit, cmd)?;
+    keyed.tag(&mut cmd);
     let manifest = unit_key::dep_manifest(
         sess,
         node,

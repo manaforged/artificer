@@ -198,3 +198,6 @@ mod coverage;
 
 #[path = "cli/scripts.rs"]
 mod scripts;
+
+#[path = "cli/scoping.rs"]
+mod scoping;

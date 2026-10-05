@@ -6,7 +6,6 @@ use crate::{artifact, cargo, config, features, jobs, manifest, mods, schedule, s
 use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 #[derive(Debug)]
 pub struct Report {
