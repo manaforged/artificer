@@ -57,3 +57,35 @@ fn check_tests_leaves_out_test_functions_of_a_harness_free_target() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn a_test_binary_killed_by_a_signal_is_named_with_its_signal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("pkg");
+    fs::create_dir_all(root.join("tests")).unwrap();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"crashy\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[[test]]\nname = \"aborts\"\nharness = false\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/lib.rs"), "pub fn n() -> u8 { 1 }\n").unwrap();
+    fs::write(
+        root.join("tests/aborts.rs"),
+        "fn main() { println!(\"test result: ok. 1 passed\"); std::process::abort(); }\n",
+    )
+    .unwrap();
+    let home = tmp.path().join("home");
+    let out = artificer(&home, &root).arg("test").output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_ne!(
+        out.status.code(),
+        Some(0),
+        "a crashed test binary fails the run"
+    );
+    assert!(
+        stderr.contains("aborts") && stderr.contains("signal"),
+        "the failure names the binary and the signal, as Cargo does: {stderr}"
+    );
+}

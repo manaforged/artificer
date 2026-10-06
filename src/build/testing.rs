@@ -189,18 +189,18 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
     }
     let capture = crate::out::current().is_some();
     let statuses = crate::schedule::fan_out(jobs, |job| {
-        let mut run = match job {
+        let (mut run, what) = match job {
             Job::Bin { pkg, exe, label } => {
                 crate::out::status(crate::out::Status::Running, label);
                 let mut run = sess.settings.exec_cmd(&exe);
                 run.current_dir(pkg.root());
                 cargo::set_package_env(&mut run, pkg);
                 run.args(&opts.args);
-                run
+                (run, format!("`{}`", exe.display()))
             }
             Job::Doc { name, cmd } => {
                 crate::out::err(format!("artificer: doctests {name}"));
-                cmd
+                (cmd, format!("doctests for {name}"))
             }
         };
         crate::jobs::isolate(&mut run);
@@ -214,6 +214,11 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
                 crate::profile::status(&mut run)
             }
         })?;
+        if !status.success() {
+            crate::out::err(format!(
+                "error: process didn't exit successfully: {what} ({status})"
+            ));
+        }
         Ok(status)
     })?;
     Ok(statuses
