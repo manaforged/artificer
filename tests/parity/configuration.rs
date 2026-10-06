@@ -131,6 +131,59 @@ fn a_build_dependency_feature_stays_out_of_normal_code() {
 }
 
 #[test]
+fn a_crate_shared_by_normal_and_build_code_keeps_one_copy_of_its_split_dependency() {
+    let p = Project::new(&[
+        (
+            "Cargo.toml",
+            &manifest(
+                "shared_split",
+                "build = \"build.rs\"\n[dependencies]\nmid = { path = \"mid\" }\nbase = { path = \"base\", features = [\"extra\"] }\n[build-dependencies]\nmid = { path = \"mid\" }\nbase = { path = \"base\" }\n[workspace]\nexclude = [\"base\", \"leaf\", \"mid\"]\n",
+            ),
+        ),
+        (
+            "base/Cargo.toml",
+            &manifest("base", "[features]\nextra = []\n"),
+        ),
+        (
+            "base/src/lib.rs",
+            "pub trait Mark {}\npub fn extra() -> bool { cfg!(feature = \"extra\") }\n",
+        ),
+        (
+            "leaf/Cargo.toml",
+            &manifest("leaf", "[dependencies]\nbase = { path = \"../base\" }\n"),
+        ),
+        (
+            "leaf/src/lib.rs",
+            "pub struct Leaf;\nimpl base::Mark for Leaf {}\n",
+        ),
+        (
+            "mid/Cargo.toml",
+            &manifest(
+                "mid",
+                "[dependencies]\nbase = { path = \"../base\" }\nleaf = { path = \"../leaf\" }\n",
+            ),
+        ),
+        (
+            "mid/src/lib.rs",
+            "pub fn marked() -> bool {\n    fn need<T: base::Mark>(_: T) -> bool { true }\n    need(leaf::Leaf)\n}\n",
+        ),
+        ("build.rs", "fn main() { assert!(mid::marked()); }\n"),
+        (
+            "src/main.rs",
+            "fn main() { println!(\"{} {}\", mid::marked(), base::extra()); }\n",
+        ),
+    ]);
+    p.parity_run(&[]);
+    assert_eq!(
+        artificer::store_stat(&p.home)
+            .expect("read fixture cache counters")
+            .fallbacks,
+        0,
+        "artificer handed the split build to cargo"
+    );
+}
+
+#[test]
 fn rustflags_cfg_reaches_the_compiler() {
     let p = Project::new(&[
         ("Cargo.toml", &manifest("rf", "")),

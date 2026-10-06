@@ -27,3 +27,30 @@ bincode v2.0.1 (registry)|alloc,std (*)
             .all(|feature| !feature.contains("(*)"))
     );
 }
+
+#[test]
+fn a_subtree_cargo_prints_once_reaches_the_other_side_without_its_features() {
+    let text = "\
+app v0.1.0 (/w)|
+├── base v0.1.0 (/w/base)|extra
+└── mid v0.1.0 (/w/mid)|
+    ├── base v0.1.0 (/w/base)|extra
+    └── leaf v0.1.0 (/w/leaf)|
+        └── base v0.1.0 (/w/base)|extra
+[build-dependencies]
+├── base v0.1.0 (/w/base)|
+└── mid v0.1.0 (/w/mid)| (*)
+";
+    let map = parse_tree(text);
+    let key = |name: &str| TreePkg {
+        name: name.to_string(),
+        version: "0.1.0".to_string(),
+        source: TreeSource::Path(std::path::PathBuf::from(format!("/w/{name}"))),
+    };
+    assert_eq!(map.get(&(key("leaf"), Side::Host)), Some(&Vec::new()));
+    assert_eq!(map.get(&(key("base"), Side::Host)), Some(&Vec::new()));
+    assert_eq!(
+        map.get(&(key("base"), Side::Normal)),
+        Some(&vec!["extra".to_string()])
+    );
+}
