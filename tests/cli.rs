@@ -20,10 +20,41 @@ mod lifetime;
 #[path = "cli/concurrency.rs"]
 mod concurrency;
 
+fn cargo_home() -> &'static Path {
+    static HOME: OnceLock<PathBuf> = OnceLock::new();
+    HOME.get_or_init(|| {
+        let real = std::env::var_os("CARGO_HOME")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+                    .map(|home| PathBuf::from(home).join(".cargo"))
+            })
+            .expect("locate the Cargo home");
+        let home = Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("cargo-home-{}", std::process::id()));
+        for shared in ["bin", "registry", "git"] {
+            let (from, to) = (real.join(shared), home.join(shared));
+            fs::create_dir_all(&home).expect("create the test Cargo home");
+            if !from.is_dir() || to.exists() {
+                continue;
+            }
+            #[cfg(unix)]
+            let linked = std::os::unix::fs::symlink(&from, &to);
+            #[cfg(windows)]
+            let linked = std::os::windows::fs::symlink_dir(&from, &to);
+            if linked.is_err() {
+                fs::create_dir_all(&to).expect("create the test Cargo cache");
+            }
+        }
+        home
+    })
+}
+
 fn artificer(home: &Path, dir: &Path) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_artificer"));
     cmd.env("ARTIFICER_HOME", home)
         .env("ARTIFICER_NOSERVE", "1")
+        .env("CARGO_HOME", cargo_home())
         .env_remove("CARGO_TARGET_DIR")
         .current_dir(dir);
     cmd
@@ -49,7 +80,7 @@ fn stock(dir: &Path) -> Command {
         )
     });
     let mut cmd = Command::new(cargo);
-    cmd.current_dir(dir);
+    cmd.env("CARGO_HOME", cargo_home()).current_dir(dir);
     cmd
 }
 
@@ -72,6 +103,7 @@ fn shim(home: &Path, dir: &Path) -> Command {
     let mut cmd = Command::new(shim_binary());
     cmd.env("ARTIFICER_REAL_CARGO", stock(dir).get_program())
         .env("ARTIFICER_HOME", home.join("store"))
+        .env("CARGO_HOME", cargo_home())
         .env_remove("CARGO_TARGET_DIR")
         .current_dir(dir);
     cmd

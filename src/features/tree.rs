@@ -1,6 +1,6 @@
 use super::{Side, Sides, dbg_sel};
 use crate::cargo::{Metadata, Package};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 const PROC_MACRO: &str = " (proc-macro)";
@@ -69,6 +69,7 @@ enum TreeLine<'a> {
         depth: usize,
         key: TreePkg,
         proc_macro: bool,
+        dedup: bool,
         feats: Vec<&'a str>,
     },
 }
@@ -93,6 +94,7 @@ fn tree_line(line: &str) -> Option<Option<TreeLine<'_>>> {
     }
     let (head, feats) = body.split_once('|')?;
     let feats = feats.trim_end();
+    let dedup = feats.ends_with("(*)");
     let feats = feats.strip_suffix("(*)").map_or(feats, str::trim_end);
     let head = head.trim();
     let (ident, rest) = head
@@ -115,6 +117,7 @@ fn tree_line(line: &str) -> Option<Option<TreeLine<'_>>> {
         depth,
         key,
         proc_macro,
+        dedup,
         feats: feats.split(',').filter(|f| !f.is_empty()).collect(),
     }))
 }
@@ -123,14 +126,84 @@ struct Frame {
     depth: usize,
     host: bool,
     children: bool,
+    build: bool,
+    node: usize,
+}
+
+struct Node {
+    key: TreePkg,
+    feats: Vec<String>,
+    side: Side,
+    dedup: bool,
+    edge_host: bool,
+    children: Vec<usize>,
+}
+
+impl Node {
+    fn print(&self) -> (TreePkg, Vec<String>) {
+        let mut feats = self.feats.clone();
+        feats.sort();
+        (self.key.clone(), feats)
+    }
+}
+
+type FeatureMap = HashMap<(TreePkg, Side), Vec<String>>;
+
+fn add(map: &mut FeatureMap, key: TreePkg, side: Side, feats: &[String]) {
+    let slot = map.entry((key, side)).or_default();
+    for f in feats {
+        if !slot.iter().any(|have| have == f) {
+            slot.push(f.clone());
+        }
+    }
+}
+
+fn spread_deduped(map: &mut FeatureMap, nodes: &[Node]) {
+    let mut full: HashMap<(TreePkg, Vec<String>), usize> = HashMap::new();
+    for (at, node) in nodes.iter().enumerate().filter(|(_, n)| !n.dedup) {
+        full.entry(node.print()).or_insert(at);
+    }
+    let printed = |node: &Node, at: usize| {
+        if node.dedup {
+            full.get(&node.print()).copied()
+        } else {
+            Some(at)
+        }
+    };
+    let mut work: Vec<(usize, Side)> = nodes
+        .iter()
+        .filter(|n| n.dedup)
+        .filter_map(|n| {
+            let at = *full.get(&n.print())?;
+            (nodes[at].side != n.side).then_some((at, n.side))
+        })
+        .collect();
+    let printed_on: HashSet<(TreePkg, Side)> = map.keys().cloned().collect();
+    let mut seen: HashSet<(usize, Side)> = HashSet::new();
+    while let Some((at, side)) = work.pop() {
+        if !seen.insert((at, side)) {
+            continue;
+        }
+        for &child in &nodes[at].children {
+            let node = &nodes[child];
+            let side = if node.edge_host { Side::Host } else { side };
+            if !printed_on.contains(&(node.key.clone(), side)) {
+                add(map, node.key.clone(), side, &node.feats);
+            }
+            if let Some(next) = printed(node, child) {
+                work.push((next, side));
+            }
+        }
+    }
 }
 
 pub(super) fn parse_tree(text: &str) -> HashMap<(TreePkg, Side), Vec<String>> {
     walk_tree(text).unwrap_or_default()
 }
 
-fn walk_tree(text: &str) -> Option<HashMap<(TreePkg, Side), Vec<String>>> {
-    let mut map: HashMap<(TreePkg, Side), Vec<String>> = HashMap::new();
+fn walk_tree(text: &str) -> Option<FeatureMap> {
+    let mut map: FeatureMap = HashMap::new();
+    let mut nodes: Vec<Node> = Vec::new();
     let mut stack: Vec<Frame> = Vec::new();
     for line in text.lines() {
         match tree_line(line)? {
@@ -141,11 +214,13 @@ fn walk_tree(text: &str) -> Option<HashMap<(TreePkg, Side), Vec<String>>> {
                 }
                 let parent = stack.last_mut().filter(|f| f.depth == depth)?;
                 parent.children = parent.host || build;
+                parent.build = build;
             }
             Some(TreeLine::Entry {
                 depth,
                 key,
                 proc_macro,
+                dedup,
                 feats,
             }) => {
                 while stack.last().is_some_and(|f| f.depth >= depth) {
@@ -156,21 +231,33 @@ fn walk_tree(text: &str) -> Option<HashMap<(TreePkg, Side), Vec<String>>> {
                     return None;
                 }
                 let host = parent.is_some_and(|f| f.children) || proc_macro;
+                let edge_host = parent.is_some_and(|f| f.build) || proc_macro;
+                let side = if host { Side::Host } else { Side::Normal };
+                let feats: Vec<String> = feats.into_iter().map(str::to_string).collect();
+                add(&mut map, key.clone(), side, &feats);
+                let at = nodes.len();
+                if let Some(parent) = parent {
+                    nodes[parent.node].children.push(at);
+                }
+                nodes.push(Node {
+                    key,
+                    feats,
+                    side,
+                    dedup,
+                    edge_host,
+                    children: Vec::new(),
+                });
                 stack.push(Frame {
                     depth,
                     host,
                     children: host,
+                    build: false,
+                    node: at,
                 });
-                let side = if host { Side::Host } else { Side::Normal };
-                let slot = map.entry((key, side)).or_default();
-                for f in feats {
-                    if !slot.iter().any(|have| have == f) {
-                        slot.push(f.to_string());
-                    }
-                }
             }
         }
     }
+    spread_deduped(&mut map, &nodes);
     Some(map)
 }
 

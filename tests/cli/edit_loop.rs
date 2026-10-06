@@ -257,3 +257,46 @@ fn same_named_tests_in_two_packages_keep_their_own_incremental_state() {
         "each package's test has its own incremental state: {sessions:?}"
     );
 }
+
+#[test]
+fn a_unit_stored_without_incremental_restores_into_an_incremental_build() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("ws");
+    let home = tmp.path().join("home");
+    write_workspace(&root, &[("alpha", "pub fn value() -> u8 { 1 }\n")]);
+    let mods = artificer(&home, &root)
+        .args(["mods", "on", "sweep"])
+        .output()
+        .unwrap();
+    assert!(
+        mods.status.success(),
+        "{}",
+        String::from_utf8_lossy(&mods.stderr)
+    );
+    let first = artificer(&home, &root)
+        .arg("build")
+        .env("CARGO_INCREMENTAL", "0")
+        .output()
+        .unwrap();
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let second = artificer(&home, &root).arg("build").output().unwrap();
+    assert!(
+        second.status.success(),
+        "an incremental build after a non-incremental one failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    let third = artificer(&home, &root)
+        .arg("build")
+        .env("CARGO_INCREMENTAL", "0")
+        .output()
+        .unwrap();
+    assert!(
+        third.status.success(),
+        "a non-incremental build after an incremental one failed: {}",
+        String::from_utf8_lossy(&third.stderr)
+    );
+}

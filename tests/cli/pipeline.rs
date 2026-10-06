@@ -155,3 +155,37 @@ fn a_build_script_runs_while_the_package_dependencies_still_compile() {
         "the build script waited for heavy: {profile}"
     );
 }
+
+#[test]
+fn a_package_with_a_library_and_a_binary_links_after_its_dependencies_finish() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("ws");
+    write(
+        &root.join("Cargo.toml"),
+        "[workspace]\nresolver = \"2\"\nmembers = [\"heavy\", \"both\"]\n\n[profile.dev]\nopt-level = 3\n",
+    );
+    member(&root, "heavy", "", "lib.rs", &heavy_source());
+    member(
+        &root,
+        "both",
+        "heavy = { path = \"../heavy\" }\n",
+        "lib.rs",
+        "pub fn value() -> u64 {\n    heavy::BASE * 6\n}\n",
+    );
+    write(
+        &root.join("both/src/main.rs"),
+        "fn main() {\n    println!(\"{}\", both::value() + heavy::step0(0) * 0);\n}\n",
+    );
+    let home = tmp.path().join("home");
+    let out = artificer(&home, &root).arg("build").output().unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let exe = root
+        .join("target/debug")
+        .join(format!("both{}", std::env::consts::EXE_SUFFIX));
+    let ran = Command::new(exe).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&ran.stdout).trim(), "42");
+}

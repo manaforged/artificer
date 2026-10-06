@@ -24,7 +24,11 @@ impl TestSel {
     }
 
     fn wants(&self, name: &str) -> bool {
-        !self.lib && (self.only.is_empty() || self.only.iter().any(|o| o == name))
+        !self.lib && (self.only.is_empty() || self.named(name))
+    }
+
+    fn named(&self, name: &str) -> bool {
+        self.only.iter().any(|o| o == name)
     }
 }
 
@@ -64,6 +68,7 @@ pub fn compile_tests(
             .filter(|t| {
                 t.kind.iter().any(|k| k == "test")
                     && sel.wants(&t.name)
+                    && (t.test || sel.named(&t.name))
                     && Package::covered(t, &node.features)
             })
             .map(|t| (t, "int", false)),
