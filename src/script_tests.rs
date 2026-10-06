@@ -25,9 +25,12 @@ fn print_cfg_joins_repeated_keys_like_cargo() {
 fn a_recorded_link_search_from_another_machine_does_not_resolve() {
     let here = std::env::temp_dir();
     let local = format!("cargo:rustc-link-search=native={}\n", here.display());
-    let foreign = "cargo:rustc-link-search=native=/opt/another-machine/onnxruntime/lib\n";
+    let absent = here
+        .join(format!("another-machine-{}", std::process::id()))
+        .join("lib");
+    let foreign = format!("cargo:rustc-link-search=native={}\n", absent.display());
     assert!(searches_resolve(&local));
     assert!(searches_resolve("cargo:rustc-link-search=relative/dir\n"));
-    assert!(!searches_resolve(foreign));
+    assert!(!searches_resolve(&foreign));
     assert!(!searches_resolve(&format!("{local}{foreign}")));
 }
