@@ -75,15 +75,11 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
     sess.note_digest(id, &keyed.digest);
     let out = action.out.clone();
     let compile_out = action.compile_out(&sess.settings, pkg);
-    let stem = if compile_out == out {
-        keyed.digest.as_str()
-    } else {
-        keyed.metadata.as_str()
-    };
+    let stem = keyed.metadata.as_str();
     let mut cmd = unit.command(node, &compile_out, stem, script.as_ref(), &keyed)?;
     let manifest = unit_key::dep_manifest(sess, node, false, None)?;
     let early = unit.early(&out, stem);
-    let rustc = unit.rustc(&action, &mut cmd, &manifest, early.as_ref())?;
+    let rustc = unit.rustc(&action, &mut cmd, &manifest, early.as_ref(), stem)?;
     let art = unit.artifact(&out, stem)?;
     sess.put(id.to_string(), art.clone());
     sess.retain(action.lease()?);

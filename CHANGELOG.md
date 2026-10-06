@@ -9,6 +9,7 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- A workspace crate built with `CARGO_INCREMENTAL=0` and later built with incremental compilation on (or the other way round) no longer fails with "no rmeta/rlib for <crate>". Both placements now name a unit's files with the same stem, and a cached unit whose files do not match is rebuilt instead of restored.
 - The `threads` mode is on by default. It passes rustc `-Z threads` only
   when rustc accepts the flag, so builds with a stable toolchain do not
   change. A probe made with `RUSTC_BOOTSTRAP` set no longer applies to

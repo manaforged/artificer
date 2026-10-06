@@ -175,10 +175,12 @@ impl<'u> PackageUnit<'u> {
         cmd: &mut Command,
         manifest: &str,
         early: Option<&invoke::Early>,
+        stem: &str,
     ) -> Result<RustcOutcome> {
         let (sess, pkg, out) = (self.sess, self.pkg, &action.out);
         if action.hit() {
             if unit_key::deps_match(out, manifest)
+                && self.artifact(out, stem).is_ok()
                 && crate::inputs::matches(&sess.settings.home, out, pkg.root(), cmd)
             {
                 invoke::replay(sess, pkg, self.lib, out);
