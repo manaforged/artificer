@@ -89,3 +89,40 @@ fn a_test_binary_killed_by_a_signal_is_named_with_its_signal() {
         "the failure names the binary and the signal, as Cargo does: {stderr}"
     );
 }
+
+#[test]
+fn an_integration_test_marked_test_false_runs_only_when_named() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("pkg");
+    fs::create_dir_all(root.join("tests")).unwrap();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"gated\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[[test]]\nname = \"slow_gate\"\nharness = false\ntest = false\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/lib.rs"), "pub fn n() -> u8 { 1 }\n").unwrap();
+    fs::write(
+        root.join("tests/slow_gate.rs"),
+        "fn main() { println!(\"slow gate ran\"); std::process::exit(3); }\n",
+    )
+    .unwrap();
+    let home = tmp.path().join("home");
+    let default = artificer(&home, &root).arg("test").output().unwrap();
+    assert_eq!(
+        default.status.code(),
+        Some(0),
+        "a `test = false` target is skipped by a plain test run, as Cargo does: {}",
+        String::from_utf8_lossy(&default.stderr)
+    );
+    let named = artificer(&home, &root)
+        .args(["test", "--test", "slow_gate"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        named.status.code(),
+        Some(3),
+        "naming the target runs it: {}",
+        String::from_utf8_lossy(&named.stdout)
+    );
+}
