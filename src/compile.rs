@@ -33,7 +33,16 @@ pub struct Compiled {
 }
 
 pub(crate) fn waits_for_link(sess: &Session, pkg: &Package) -> bool {
-    package::PackageUnit::new(sess, pkg).is_none_or(|unit| !unit.pipelines())
+    links_shipped_bins(sess, pkg)
+        || package::PackageUnit::new(sess, pkg).is_none_or(|unit| !unit.pipelines())
+}
+
+fn links_shipped_bins(sess: &Session, pkg: &Package) -> bool {
+    sess.ship.contains(&pkg.id)
+        && pkg
+            .targets
+            .iter()
+            .any(|t| t.kind.iter().any(|k| k == "bin"))
 }
 
 pub fn run_script(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<()> {
