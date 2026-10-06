@@ -189,10 +189,7 @@ impl Action {
 
     pub(crate) fn invalidate(&self) -> Result<()> {
         self.prepare()?;
-        if self.slot.dir.exists() {
-            std::fs::remove_dir_all(&self.slot.dir)?;
-        }
-        Ok(())
+        store::discard(&self.slot.dir)
     }
 }
 

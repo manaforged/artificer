@@ -115,7 +115,10 @@ fn compile(
     let action = Action::begin(home, Kind::ScriptBin, bin_key)?;
     let bin_dir = action.out.clone();
     let mut rustc_cmd = job.rustc_cmd(&bin_dir);
-    if action.hit() && crate::inputs::matches(home, &bin_dir, pkg.root(), &rustc_cmd) {
+    if action.hit()
+        && bin_dir.join(job::bin_file()).is_file()
+        && crate::inputs::matches(home, &bin_dir, pkg.root(), &rustc_cmd)
+    {
         return Ok((action.lease()?, bin_dir));
     }
     action.invalidate()?;
@@ -129,12 +132,14 @@ fn compile(
 fn restorable(action: &Action, job: &Job, bin_unit: &str) -> Option<String> {
     let pkg = job.pkg;
     let dir = &action.slot.dir;
-    if !action.hit() {
+    if !action.hit() || !action.out.is_dir() {
         return None;
     }
     let home = &job.settings.home;
     let compiled = crate::store::Slot::new(home, bin_unit).out_dir();
-    if !crate::inputs::matches(home, &compiled, pkg.root(), &job.rustc_cmd(&compiled)) {
+    if !compiled.join(job::bin_file()).is_file()
+        || !crate::inputs::matches(home, &compiled, pkg.root(), &job.rustc_cmd(&compiled))
+    {
         return None;
     }
     let recorded = fs::read_to_string(dir.join("output")).ok()?;

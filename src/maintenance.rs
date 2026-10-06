@@ -33,28 +33,14 @@ pub fn store_stat(home: &Path) -> Result<StoreStat> {
     stat.last_build = records.last().map(last_build_line);
     let root = home.join("units").join(store::LAYOUT);
     if root.is_dir() {
-        fn walk(dir: &Path, stat: &mut StoreStat) -> Result<()> {
-            for entry in std::fs::read_dir(dir)? {
-                let Ok(entry) = entry else {
-                    continue;
-                };
-                let path = entry.path();
-                let Ok(ft) = entry.file_type() else {
-                    continue;
-                };
-                if ft.is_dir() {
-                    if path.join("ok").is_file() {
-                        stat.units += 1;
-                    }
-                    walk(&path, stat)?;
-                } else if ft.is_file() {
-                    stat.bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
-                }
+        for entry in std::fs::read_dir(&root)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() && entry.path().join("ok").is_file() {
+                stat.units += 1;
             }
-            Ok(())
         }
-        walk(&root, &mut stat)?;
     }
+    stat.bytes = store::usage(home)?;
     let cache = home.join("cargo-meta").join("cache");
     if cache.is_dir() {
         for entry in std::fs::read_dir(&cache)? {
