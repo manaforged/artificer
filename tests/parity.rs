@@ -38,6 +38,7 @@ fn stock_cargo() -> PathBuf {
 struct Run {
     code: Option<i32>,
     stdout: String,
+    stderr: String,
 }
 
 impl Run {
@@ -95,6 +96,7 @@ impl Project {
         Run {
             code: out.status.code(),
             stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
         }
     }
 
@@ -110,6 +112,7 @@ impl Project {
         Run {
             code: out.status.code(),
             stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
         }
     }
 
@@ -162,6 +165,7 @@ impl Project {
         Run {
             code: out.status.code(),
             stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
         }
     }
 

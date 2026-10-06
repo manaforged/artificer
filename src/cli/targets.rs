@@ -34,9 +34,9 @@ const FLAGS: [(&str, Flag, &[&str]); 12] = [
     ("--example", Flag::Example, EXECUTABLE),
     ("--examples", Flag::Examples, CHECK_OR_BUILD),
     ("--test", Flag::Test, LIBRARY),
-    ("--tests", Flag::Tests, CHECK_OR_BUILD),
+    ("--tests", Flag::Tests, LIBRARY),
     ("--bench", Flag::Bench, CHECK),
-    ("--all-targets", Flag::AllTargets, CHECK),
+    ("--all-targets", Flag::AllTargets, CHECK_OR_BUILD),
 ];
 
 impl<'a> Parser<'a> {

@@ -109,3 +109,50 @@ fn links_metadata_reaches_dependents() {
     ]);
     p.parity(&["check", "--workspace"], &[]);
 }
+
+#[test]
+fn build_all_targets_and_test_tests_stay_in_artificer() {
+    let p = Project::new(&[
+        ("Cargo.toml", &manifest("every_target", "")),
+        (
+            "src/lib.rs",
+            "pub fn seven() -> u8 { 7 }\n#[test]\nfn lib_unit() { assert_eq!(seven(), 7); }\n",
+        ),
+        (
+            "src/main.rs",
+            "fn main() { println!(\"{}\", every_target::seven()); }\n#[test]\nfn bin_unit() {}\n",
+        ),
+        ("examples/demo.rs", "fn main() { println!(\"demo\"); }\n"),
+        (
+            "tests/outer.rs",
+            "#[test]\nfn outer() { assert_eq!(every_target::seven(), 7); }\n",
+        ),
+        (
+            "benches/speed.rs",
+            "#[test]\nfn speed() { assert_eq!(every_target::seven(), 7); }\n",
+        ),
+    ]);
+    let built = p.artificer(&["build", "--all-targets"], &[]);
+    assert!(built.ok(), "{}", built.stderr);
+    let demo = format!("demo{}", std::env::consts::EXE_SUFFIX);
+    assert!(p.path("target/debug/examples").join(demo).is_file());
+    p.parity(&["build", "--all-targets"], &[]);
+    let tested = p.artificer(&["test", "--tests"], &[]);
+    assert!(tested.ok(), "{}\n{}", tested.stdout, tested.stderr);
+    for name in ["lib_unit", "bin_unit", "outer"] {
+        assert!(
+            tested.stdout.contains(name),
+            "{name} did not run: {}",
+            tested.stdout
+        );
+    }
+    assert!(!tested.stdout.contains("speed"), "{}", tested.stdout);
+    p.parity(&["test", "--tests"], &[]);
+    assert_eq!(
+        artificer::store_stat(&p.home)
+            .expect("read fixture cache counters")
+            .fallbacks,
+        0,
+        "a target-set flag fell back to cargo"
+    );
+}
