@@ -233,3 +233,7 @@ mod scripts;
 
 #[path = "cli/scoping.rs"]
 mod scoping;
+
+#[cfg(windows)]
+#[path = "cli/windows.rs"]
+mod windows;

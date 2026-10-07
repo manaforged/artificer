@@ -173,7 +173,17 @@ pub(crate) fn run_rustc_inner(
         cmd.args(crate::profile::FLAGS);
         cmd.env(crate::profile::BOOTSTRAP.0, crate::profile::BOOTSTRAP.1);
     }
-    let status = stream(cmd, sess, pkg, file, early).context("rustc")?;
+    #[cfg(windows)]
+    let mut response = response::Response::new(cmd, sess.settings.wrapper_chain(pkg).len(), out)
+        .context("prepare rustc response files")?;
+    #[cfg(windows)]
+    let launch = &mut response.command;
+    #[cfg(not(windows))]
+    let launch = &mut *cmd;
+    let status = stream(launch, sess, pkg, file, early);
+    #[cfg(windows)]
+    drop(response);
+    let status = status.context("rustc")?;
     if let Some(staged) = &staged
         && status.success()
     {

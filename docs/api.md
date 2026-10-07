@@ -51,6 +51,12 @@ real Cargo. Named `artificer`, it accepts the commands below.
 The [reference](guide/reference.md) lists the supported build options and
 the compile modes.
 
+On Windows, handled builds and doctests pass rustc and rustdoc arguments
+through UTF-8 response files. Wrapper executable arguments stay on the
+command line. Diagnostics and cache input records retain the original
+compiler arguments. Doctests receive native library search paths from
+their normal and development dependencies.
+
 ## Common tasks
 
 Build through the store, then confirm that the command did not fall back:

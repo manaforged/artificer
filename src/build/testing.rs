@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(windows)]
+use crate::invoke::response::Response;
 
 #[derive(Debug, Default)]
 pub struct TestOpts {
@@ -189,31 +191,50 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
     }
     let capture = crate::out::current().is_some();
     let statuses = crate::schedule::fan_out(jobs, |job| {
-        let (mut run, what) = match job {
-            Job::Bin { pkg, exe, label } => {
-                crate::out::status(crate::out::Status::Running, label);
-                let mut run = sess.settings.exec_cmd(&exe);
-                run.current_dir(pkg.root());
-                cargo::set_package_env(&mut run, pkg);
-                run.args(&opts.args);
-                (run, format!("`{}`", exe.display()))
-            }
-            Job::Doc { name, cmd } => {
-                crate::out::err(format!("artificer: doctests {name}"));
-                (cmd, format!("doctests for {name}"))
-            }
+        #[cfg(windows)]
+        let mut response = None;
+        let (mut run, what) =
+            match job {
+                Job::Bin { pkg, exe, label } => {
+                    crate::out::status(crate::out::Status::Running, label);
+                    let mut run = sess.settings.exec_cmd(&exe);
+                    run.current_dir(pkg.root());
+                    cargo::set_package_env(&mut run, pkg);
+                    run.args(&opts.args);
+                    (run, format!("`{}`", exe.display()))
+                }
+                Job::Doc { name, cmd } => {
+                    crate::out::err(format!("artificer: doctests {name}"));
+                    #[cfg(windows)]
+                    {
+                        response = Some(Response::new(&cmd, 0, &sess.settings.home).with_context(
+                            || format!("prepare response files for doctests {name}"),
+                        )?);
+                    }
+                    (cmd, format!("doctests for {name}"))
+                }
+            };
+        #[cfg(windows)]
+        let run = match response.as_mut() {
+            Some(response) => &mut response.command,
+            None => &mut run,
         };
-        crate::jobs::isolate(&mut run);
+        #[cfg(not(windows))]
+        let run = &mut run;
+        crate::jobs::isolate(run);
         let status = crate::profile::span(crate::profile::RunPhase::TestRun, || {
             if capture {
-                crate::profile::output(&mut run).map(|out| {
+                crate::profile::output(run).map(|out| {
                     crate::out::replay(&out.stdout, &out.stderr);
                     out.status
                 })
             } else {
-                crate::profile::status(&mut run)
+                crate::profile::status(run)
             }
-        })?;
+        });
+        #[cfg(windows)]
+        drop(response);
+        let status = status.with_context(|| format!("run {what}"))?;
         if !status.success() {
             crate::out::err(format!(
                 "error: process didn't exit successfully: {what} ({status})"

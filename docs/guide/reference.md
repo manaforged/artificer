@@ -163,6 +163,18 @@ inputs, and relevant compiler/build-script environment variables.
 Per-target CARGO_TARGET_TRIPLE_RUSTFLAGS variables cause full Cargo
 fallback.
 
+On Windows, rustc and rustdoc arguments use response files so large feature
+lists and dependency paths do not exceed the process command-line limit.
+Each file contains one UTF-8 argument per line, without shell quoting.
+Spaces, quotes, and backslashes keep their original meaning. Existing
+`@file` arguments, arguments with line breaks or invalid Unicode, and
+wrapper executable arguments stay on the command line in their original
+order. Response files remain available until the compiler exits and are
+then removed.
+
+Doctests receive native library search paths from build scripts in their
+normal and development dependency closure, as compiled tests do.
+
 An explicitly empty RUSTFLAGS clears config rustflags, matching Cargo:
 set and unset are different states.
 

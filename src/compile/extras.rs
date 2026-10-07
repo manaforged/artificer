@@ -270,6 +270,7 @@ pub fn doctest_cmd(
         invoke::apply_script(&mut cmd, &s);
     }
     invoke::add_externs(&mut cmd, sess, node, invoke::ExternSet::Test, false)?;
+    invoke::add_natives(&mut cmd, sess, &pkg.id, true);
     for a in args {
         cmd.arg("--test-args").arg(a);
     }
