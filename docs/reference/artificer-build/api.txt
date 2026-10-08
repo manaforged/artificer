@@ -133,10 +133,12 @@ pub artificer::InstallReport::shim: std::path::PathBuf
 pub struct artificer::Mods
 pub artificer::Mods::early: bool
 pub artificer::Mods::enabled: bool
+pub artificer::Mods::lease_wait_secs: u64
 pub artificer::Mods::meta_cache: bool
 pub artificer::Mods::rmeta: bool
 pub artificer::Mods::serve: bool
 pub artificer::Mods::slim_deps: bool
+pub artificer::Mods::store_cap_gb: core::option::Option<u64>
 pub artificer::Mods::sweep: bool
 pub artificer::Mods::threads: bool
 pub artificer::Mods::trust: bool
@@ -270,6 +272,7 @@ impl core::fmt::Display for artificer::Unmodeled
 pub const artificer::LAYOUT: &str
 pub const artificer::PULL_EVERY: core::time::Duration
 pub const artificer::REMOTE_ENV: &str
+pub const artificer::SHIM_DEPTH: &str
 pub fn artificer::add_to_profiles(files: &[std::path::PathBuf], line: &str, control: &std::path::Path) -> anyhow::Result<alloc::vec::Vec<std::path::PathBuf>>
 pub fn artificer::begin_profile(command: &[alloc::string::String], dir: &std::path::Path) -> artificer::ProfileRecording
 pub fn artificer::cargo_home() -> std::path::PathBuf
@@ -304,6 +307,7 @@ pub fn artificer::purge(home: &std::path::Path) -> core::io::error::Result<bool>
 pub fn artificer::push(home: &std::path::Path, units: core::option::Option<&std::path::Path>) -> anyhow::Result<(artificer::Location, artificer::TransferReport)>
 pub fn artificer::raise_open_file_limit() -> core::io::error::Result<()>
 pub fn artificer::ready(home: &std::path::Path) -> bool
+pub fn artificer::real_cargo_command() -> anyhow::Result<std::process::Command>
 pub fn artificer::refresh_shim(running: &std::path::Path, control: &std::path::Path, cargo_home: &std::path::Path) -> anyhow::Result<bool>
 pub fn artificer::remote(home: &std::path::Path) -> anyhow::Result<core::option::Option<(artificer::Location, artificer::RemoteSource)>>
 pub fn artificer::remove_from_profiles(files: &[std::path::PathBuf], line: &str, control: &std::path::Path) -> anyhow::Result<alloc::vec::Vec<std::path::PathBuf>>
@@ -320,8 +324,9 @@ pub fn artificer::set_jobs(jobs: usize)
 pub fn artificer::set_quiet(on: bool)
 pub fn artificer::set_remote(home: &std::path::Path, location: core::option::Option<&artificer::Location>) -> anyhow::Result<()>
 pub fn artificer::set_trace(on: bool)
+pub fn artificer::shim_depth() -> u32
 pub fn artificer::spawn_pull(home: &std::path::Path) -> anyhow::Result<()>
-pub fn artificer::stock_cargo() -> std::path::PathBuf
+pub fn artificer::stock_cargo() -> anyhow::Result<std::path::PathBuf>
 pub fn artificer::store_stat(home: &std::path::Path) -> anyhow::Result<artificer::StoreStat>
 pub fn artificer::sweep_dir(dir: &std::path::Path, target: core::option::Option<&std::path::Path>, home: &std::path::Path) -> anyhow::Result<artificer::SweepReport>
 pub fn artificer::test_package(dir: &std::path::Path, packages: &[alloc::string::String], home: &std::path::Path, opts: &artificer::TestOpts) -> anyhow::Result<i32>

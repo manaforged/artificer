@@ -59,6 +59,7 @@
 | [`push`](#push) | fn |  |
 | [`raise_open_file_limit`](#raise_open_file_limit) | fn |  |
 | [`ready`](#ready) | fn |  |
+| [`real_cargo_command`](#real_cargo_command) | fn |  |
 | [`refresh_shim`](#refresh_shim) | fn |  |
 | [`remote`](#remote) | fn |  |
 | [`remove_from_profiles`](#remove_from_profiles) | fn |  |
@@ -75,6 +76,7 @@
 | [`set_quiet`](#set_quiet) | fn |  |
 | [`set_remote`](#set_remote) | fn |  |
 | [`set_trace`](#set_trace) | fn |  |
+| [`shim_depth`](#shim_depth) | fn |  |
 | [`spawn_pull`](#spawn_pull) | fn |  |
 | [`stock_cargo`](#stock_cargo) | fn |  |
 | [`store_stat`](#store_stat) | fn |  |
@@ -86,6 +88,7 @@
 | [`LAYOUT`](#layout) | const |  |
 | [`PULL_EVERY`](#pull_every) | const |  |
 | [`REMOTE_ENV`](#remote_env) | const |  |
+| [`SHIM_DEPTH`](#shim_depth-1) | const |  |
 
 ## Structs
 
@@ -137,10 +140,12 @@
 | --- | --- |
 | <code>early: bool</code> |  |
 | <code>enabled: bool</code> |  |
+| <code>lease_wait_secs: u64</code> |  |
 | <code>meta_cache: bool</code> |  |
 | <code>rmeta: bool</code> |  |
 | <code>serve: bool</code> |  |
 | <code>slim_deps: bool</code> |  |
+| <code>store_cap_gb: Option&lt;u64&gt;</code> |  |
 | <code>sweep: bool</code> |  |
 | <code>threads: bool</code> |  |
 | <code>trust: bool</code> |  |
@@ -650,6 +655,11 @@
 <pre>pub fn <a href="#ready">ready</a>(home: &amp;Path) -&gt; bool</pre>
 
 
+### `real_cargo_command`
+
+<pre>pub fn <a href="#real_cargo_command">real_cargo_command</a>() -&gt; Result&lt;Command&gt;</pre>
+
+
 ### `refresh_shim`
 
 <pre>pub fn <a href="#refresh_shim">refresh_shim</a>(running: &amp;Path, control: &amp;Path, cargo_home: &amp;Path) -&gt; Result&lt;bool&gt;</pre>
@@ -730,6 +740,11 @@
 <pre>pub fn <a href="#set_trace">set_trace</a>(on: bool)</pre>
 
 
+### `shim_depth`
+
+<pre>pub fn <a href="#shim_depth">shim_depth</a>() -&gt; u32</pre>
+
+
 ### `spawn_pull`
 
 <pre>pub fn <a href="#spawn_pull">spawn_pull</a>(home: &amp;Path) -&gt; Result&lt;()&gt;</pre>
@@ -737,7 +752,7 @@
 
 ### `stock_cargo`
 
-<pre>pub fn <a href="#stock_cargo">stock_cargo</a>() -&gt; PathBuf</pre>
+<pre>pub fn <a href="#stock_cargo">stock_cargo</a>() -&gt; Result&lt;PathBuf&gt;</pre>
 
 
 ### `store_stat`
@@ -785,6 +800,11 @@
 ### `REMOTE_ENV`
 
 <pre>pub const <a href="#remote_env">REMOTE_ENV</a>: &amp;str</pre>
+
+
+### `SHIM_DEPTH`
+
+<pre>pub const <a href="#shim_depth-1">SHIM_DEPTH</a>: &amp;str</pre>
 
 
 ---
