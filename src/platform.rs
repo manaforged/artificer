@@ -90,17 +90,30 @@ pub fn alive(pid: u32) -> bool {
     }
 }
 
+const TEMP_TAG: &str = ".artificer-";
+
+pub(crate) fn temp_sibling(dst: &Path) -> PathBuf {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let name = dst.file_name().unwrap_or_default().to_string_lossy();
+    dst.with_file_name(format!(
+        ".{name}{TEMP_TAG}{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ))
+}
+
+pub(crate) fn temp_owner(file_name: &str) -> Option<(&str, u32)> {
+    let rest = file_name.strip_prefix('.')?;
+    let (name, tail) = rest.rsplit_once(TEMP_TAG)?;
+    let (pid, _) = tail.split_once('-')?;
+    Some((name, pid.parse().ok()?))
+}
+
 pub(crate) fn replace_atomic(
     dst: &Path,
     write: impl FnOnce(&Path) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let name = dst.file_name().unwrap_or_default().to_string_lossy();
-    let tmp = dst.with_file_name(format!(
-        ".{name}.artificer-{}-{}",
-        std::process::id(),
-        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
+    let tmp = temp_sibling(dst);
     let result = write(&tmp).and_then(|()| std::fs::rename(&tmp, dst));
     if result.is_err() {
         if tmp.is_dir() {

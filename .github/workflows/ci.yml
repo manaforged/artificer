@@ -45,20 +45,24 @@ jobs:
         run: |
           set -euo pipefail
           unset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR
-          real_cargo=$(command -v cargo)
+          root=$PWD
           rustup_home=$(rustup show home)
           toolchain=$(rustup show active-toolchain | cut -d' ' -f1)
           scratch=$(mktemp -d -p "${RUNNER_TEMP:-$HOME}")
+          mkdir -p "$scratch/proxy"
+          ln -s "$(command -v rustup)" "$scratch/proxy/cargo"
+          real_cargo="$scratch/proxy/cargo"
           export HOME="$scratch/home" CARGO_HOME="$scratch/cargo" RUSTUP_HOME="$rustup_home" RUSTUP_TOOLCHAIN="$toolchain" ARTIFICER_HOME="$scratch/store"
           mkdir -p "$HOME" "$CARGO_HOME/bin"
           ARTIFICER_REAL_CARGO="$real_cargo" ./scripts/install.sh
           . "$HOME/.artificer/env"
           shim=$(command -v cargo)
           test "$shim" = "$HOME/.artificer/bin/cargo"
-          "$shim" new --lib "$scratch/fixture"
-          "$shim" build --manifest-path "$scratch/fixture/Cargo.toml"
+          cd "$scratch"
+          "$shim" new --lib fixture
+          "$shim" build --manifest-path fixture/Cargo.toml
           test -d "$ARTIFICER_HOME/units"
-          ./scripts/install.sh --uninstall
+          "$root/scripts/install.sh" --uninstall
           test ! -e "$CARGO_HOME/bin/artificer"
           test ! -e "$HOME/.artificer/bin/cargo"
       - name: Validate PowerShell installer

@@ -71,6 +71,8 @@ impl Kind {
     }
 }
 
+const LEASE_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+
 pub struct Action {
     pub name: String,
     pub slot: Slot,
@@ -145,20 +147,34 @@ impl Action {
         if self.writing.get() {
             return Ok(());
         }
-        match self.lease.try_lock() {
-            Ok(()) => {}
-            Err(std::fs::TryLockError::WouldBlock) => {
-                return Err(
-                    crate::cargo::Unmodeled(format!("unit {} is in use", self.name)).into(),
-                );
-            }
-            Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
-        }
+        self.wait_write()?;
         self.writing.set(true);
         if !store::has_room(&self.slot.dir) {
             return Err(crate::cargo::Unmodeled("insufficient cache disk space".into()).into());
         }
         Ok(())
+    }
+
+    fn wait_write(&self) -> Result<()> {
+        let limit = std::time::Duration::from_secs(crate::mods::load(&self.home)?.lease_wait_secs);
+        let start = std::time::Instant::now();
+        loop {
+            match self.lease.try_lock() {
+                Ok(()) => return Ok(()),
+                Err(std::fs::TryLockError::WouldBlock) if start.elapsed() < limit => {
+                    std::thread::sleep(LEASE_POLL);
+                }
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    return Err(crate::cargo::Unmodeled(format!(
+                        "unit {} was in use for {}s",
+                        self.name,
+                        limit.as_secs()
+                    ))
+                    .into());
+                }
+                Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+            }
+        }
     }
 
     pub(crate) fn lease(&self) -> Result<Arc<std::fs::File>> {
@@ -189,10 +205,7 @@ impl Action {
 
     pub(crate) fn invalidate(&self) -> Result<()> {
         self.prepare()?;
-        if self.slot.dir.exists() {
-            std::fs::remove_dir_all(&self.slot.dir)?;
-        }
-        Ok(())
+        store::discard(&self.slot.dir)
     }
 }
 

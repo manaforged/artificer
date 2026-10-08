@@ -9,6 +9,8 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- Windows compilations and doctests with large feature lists or dependency paths use compiler response files. They no longer fail at process launch with "The filename or extension is too long. (os error 206)".
+- Doctests receive native library search paths from their dependency build scripts, so libraries such as Windows import libraries can be found when linking doctest executables.
 - A package with both a library and a binary no longer fails with "extern location for <dependency> does not exist" when a dependency is still compiling. The package's library started as soon as its dependencies' metadata was ready, and the binary built in the same step then linked against libraries that were not yet written. Such a package now waits for its dependencies to finish.
 - `cargo test` skips an integration test marked `test = false`, as Cargo does, and runs it when it is named with `--test`. Before, the shim ran it on every test run.
 - A test binary or doctest run that fails without printing a test failure, such as one killed by a signal, is now named with its exit status ("process didn't exit successfully: `<path>` (signal: 6 (SIGABRT))"), as Cargo does. Before, the run exited 1 with no message.

@@ -32,3 +32,16 @@ fn a_workspace_with_a_proc_macro_and_a_native_sys_crate_runs_like_cargo() {
     let out = p.artificer(&["run"], &[]);
     assert!(out.stdout.contains("native 42"), "{}", out.stdout);
 }
+
+const DOC_LIB: &str = "extern \"C\" {\n    pub fn csum(a: u32, b: u32) -> u32;\n}\n\n/// ```\n/// assert_eq!(csum_sys::add(41, 1), 42);\n/// ```\npub fn add(a: u32, b: u32) -> u32 {\n    unsafe { csum(a, b) }\n}\n";
+
+#[test]
+fn a_doctest_of_a_native_sys_crate_runs_like_cargo() {
+    let p = Project::new(&[
+        ("Cargo.toml", SYS_TOML),
+        ("build.rs", SYS_BUILD),
+        ("src/csum.c", SYS_C),
+        ("src/lib.rs", DOC_LIB),
+    ]);
+    p.parity(&["test", "--doc"], &[]);
+}

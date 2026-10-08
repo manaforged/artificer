@@ -76,3 +76,29 @@ fn moving_an_item_between_lists_changes_the_key() {
     second.feed_list(empty).feed_list(["-Copt-level=1"]);
     assert_ne!(first.digest(), second.digest());
 }
+
+#[test]
+fn a_stale_unit_in_use_waits_for_its_reader() -> anyhow::Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home)?;
+    let built = Action::begin(&home, Kind::Script, "stale")?;
+    built.prepare()?;
+    built.finish()?;
+    let reader = built.lease()?;
+    drop(built);
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        drop(reader);
+    });
+    let start = std::time::Instant::now();
+    let again = Action::begin(&home, Kind::Script, "stale")?;
+    assert!(again.hit());
+    again.invalidate()?;
+    assert!(start.elapsed() >= std::time::Duration::from_millis(250));
+    assert!(!again.hit());
+    release
+        .join()
+        .map_err(|panic| anyhow::anyhow!("reader thread panicked: {panic:?}"))?;
+    Ok(())
+}

@@ -102,7 +102,7 @@ pub(crate) fn gc_scratch(home: &Path) -> Result<u32> {
         let Some(_lease) = crate::store::try_write(home, &name)? else {
             continue;
         };
-        fs::remove_dir_all(entry.path())?;
+        crate::store::discard(&entry.path())?;
         n += 1;
     }
     Ok(n)

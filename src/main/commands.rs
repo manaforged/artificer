@@ -102,7 +102,7 @@ pub(super) fn install_cmd(args: &[String]) -> Result<ExitCode> {
     };
     let binary = env::current_exe().context("resolve the running binary")?;
     let control = artificer::control_home();
-    let real = artificer::stock_cargo();
+    let real = artificer::stock_cargo()?;
     artificer::check_real_cargo(&real, &control)?;
     artificer::serve_stop(&artificer::default_home())?;
     let report = artificer::install(&binary, &real, &artificer::cargo_home(), &control)?;
@@ -175,7 +175,7 @@ pub(super) fn uninstall_cmd(args: &[String]) -> Result<ExitCode> {
     };
     let home = artificer::default_home();
     artificer::serve_stop(&home)?;
-    let cargo = artificer::stock_cargo();
+    let cargo = artificer::stock_cargo()?;
     let cargo_home = artificer::cargo_home();
     let control = artificer::control_home();
     let package = artificer::cargo_package(&cargo_home);

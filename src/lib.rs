@@ -41,7 +41,9 @@ pub use build::{
     CheckOpts, Pick, Report, TargetSel, Targets, TestOpts, check, check_cmd, check_package,
     check_selected, run_cmd, test_package,
 };
-pub use cargo::{Unmodeled, cargo_home, stock_cargo, toolchain_path};
+pub use cargo::{
+    SHIM_DEPTH, Unmodeled, cargo_home, real_cargo_command, shim_depth, stock_cargo, toolchain_path,
+};
 pub use compile::{RustcOutcome, ScriptOutcome};
 pub use gate::passthrough_reason;
 pub(crate) use home::resolve_path;

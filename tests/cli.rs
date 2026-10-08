@@ -84,6 +84,23 @@ fn stock(dir: &Path) -> Command {
     cmd
 }
 
+fn cargo_proxy() -> PathBuf {
+    let bin = cargo_home().join("bin");
+    let suffix = std::env::consts::EXE_SUFFIX;
+    let named = bin.join(format!("cargo{suffix}"));
+    let rustup = bin.join(format!("rustup{suffix}"));
+    if !rustup.is_file() || named.canonicalize().ok() == rustup.canonicalize().ok() {
+        return named;
+    }
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("proxy-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("create proxy directory");
+    let proxy = dir.join(format!("cargo{suffix}"));
+    if !proxy.exists() && fs::hard_link(&rustup, &proxy).is_err() {
+        fs::copy(&rustup, &proxy).expect("copy the rustup proxy");
+    }
+    proxy
+}
+
 fn shim_binary() -> &'static Path {
     static SHIM: OnceLock<PathBuf> = OnceLock::new();
     SHIM.get_or_init(|| {
@@ -233,3 +250,7 @@ mod scripts;
 
 #[path = "cli/scoping.rs"]
 mod scoping;
+
+#[cfg(windows)]
+#[path = "cli/windows.rs"]
+mod windows;

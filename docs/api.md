@@ -51,6 +51,12 @@ real Cargo. Named `artificer`, it accepts the commands below.
 The [reference](guide/reference.md) lists the supported build options and
 the compile modes.
 
+On Windows, handled builds and doctests pass rustc and rustdoc arguments
+through UTF-8 response files. Wrapper executable arguments stay on the
+command line. Diagnostics and cache input records retain the original
+compiler arguments. Doctests receive native library search paths from
+their normal and development dependencies.
+
 ## Common tasks
 
 Build through the store, then confirm that the command did not fall back:
@@ -230,6 +236,8 @@ unit names on each critical path.
 - `ARTIFICER_STORE_CAP_GB` sets the store cap in GiB. It must be an
   integer; any other value is an error. The default is 15% of the volume,
   with a minimum of 8 GiB. Larger configured values are clamped to that limit.
+  `store-cap-gb` in `mods.toml` sets the same cap for every process that
+  uses the store; the environment variable overrides it.
 - `ARTIFICER_REMOTE` overrides the configured remote store. An empty value
   turns the remote off.
 - `ARTIFICER_NO_TREE` skips the feature probe, so every handled command
@@ -241,6 +249,15 @@ unit names on each critical path.
 - `ARTIFICER_TIMING` prints Artificer phase timings.
 - Compile modes live in `ARTIFICER_HOME/mods.toml`. Change them with
   `artificer mods`, not by editing the file.
+- `lease-wait-secs` in `mods.toml` sets how long a build waits for another
+  build to stop reading a unit it must rebuild. The default is 1800. After
+  that, the build runs real Cargo and records `unit NAME was in use for Ns`.
+- `ARTIFICER_REAL_CARGO` names the real Cargo. Artificer never runs a
+  candidate that resolves to its own shim; if no candidate remains, the
+  command fails with exit 101.
+- The shim sets `ARTIFICER_SHIM_DEPTH` on every real Cargo it starts. A
+  shim that starts with the value at 1 or more runs real Cargo directly,
+  with no store and no daemon.
 
 The [reference](guide/reference.md#environment-variables) lists every
 environment variable.

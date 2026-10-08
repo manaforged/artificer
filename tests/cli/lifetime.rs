@@ -182,9 +182,13 @@ fn concurrent_build_scripts_keep_each_builds_environment() {
         .env("RUSTC_WRAPPER", &wrapper)
         .env("PROOF_VALUE", "second")
         .env("PROOF_PAUSE", "0")
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .expect("run fixture command");
+    std::thread::sleep(Duration::from_millis(500));
     let first = first.finish();
+    let second = second.wait_with_output().expect("collect fixture output");
     assert!(
         second.status.success(),
         "{}",
@@ -195,6 +199,7 @@ fn concurrent_build_scripts_keep_each_builds_environment() {
         "{}",
         String::from_utf8_lossy(&first.stderr)
     );
+    assert!(!home.join("stat.fallbacks").exists());
     assert_eq!(String::from_utf8_lossy(&second.stdout).trim(), "second");
     assert_eq!(
         String::from_utf8_lossy(&first.stdout).trim(),

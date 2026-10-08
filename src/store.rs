@@ -63,7 +63,7 @@ impl Slot {
             }
             fs::write(tmp.join("ok"), "")?;
             if self.dir.exists() && !self.hit() {
-                fs::remove_dir_all(&self.dir)?;
+                discard(&self.dir).map_err(std::io::Error::other)?;
             }
             Ok(())
         });
@@ -104,7 +104,10 @@ mod gc;
 mod layouts;
 use gc::aged;
 pub(crate) use gc::size;
-pub use gc::{AGE, CAP, CAP_SHARE, gc_cap, gc_units, has_room};
+pub use gc::{AGE, CAP, CAP_SHARE, gc_cap, gc_units, has_room, usage};
+
+mod discard;
+pub(crate) use discard::discard;
 
 mod lineage;
 pub(crate) use lineage::{adopt, label, labelled};

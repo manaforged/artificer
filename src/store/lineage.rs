@@ -57,11 +57,7 @@ fn evict(home: &Path, name: &str) -> Result<()> {
     let Some(_lease) = try_write(home, name)? else {
         return Ok(());
     };
-    let dir = Slot::new(home, name).dir;
-    if dir.is_dir() {
-        fs::remove_dir_all(&dir)?;
-    }
-    Ok(())
+    super::discard::discard(&Slot::new(home, name).dir)
 }
 
 pub(super) fn gc_pointers(home: &Path, max_age: Duration) -> Result<u64> {

@@ -30,6 +30,10 @@ pub struct Mods {
     pub trust: bool,
     pub early: bool,
     pub serve: bool,
+    #[serde(rename = "lease-wait-secs")]
+    pub lease_wait_secs: u64,
+    #[serde(rename = "store-cap-gb")]
+    pub store_cap_gb: Option<u64>,
 }
 
 impl Default for Mods {
@@ -44,6 +48,8 @@ impl Default for Mods {
             trust: true,
             early: false,
             serve: false,
+            lease_wait_secs: 30 * 60,
+            store_cap_gb: None,
         }
     }
 }
@@ -150,6 +156,10 @@ pub fn save(home: &Path, mods: &Mods) -> Result<()> {
     for name in Mods::names() {
         let on = mods.get(name)?;
         body.push_str(&format!("{name} = {on}\n"));
+    }
+    body.push_str(&format!("lease-wait-secs = {}\n", mods.lease_wait_secs));
+    if let Some(gb) = mods.store_cap_gb {
+        body.push_str(&format!("store-cap-gb = {gb}\n"));
     }
     fs::write(path(home), body)?;
     let key = crate::resolve_path(&path(home));

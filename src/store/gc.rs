@@ -6,6 +6,8 @@ pub const CAP: u64 = 8 << 30;
 
 pub const CAP_SHARE: u64 = 15;
 
+pub const HEADROOM_SHARE: u64 = 10;
+
 pub const FREE_SHARE: u64 = 5;
 
 pub const FREE_FLOOR: u64 = 8 << 30;
@@ -38,15 +40,16 @@ pub fn gc_cap(home: &Path, cap: u64) -> Result<(u32, u64)> {
             units.push((mtime, size(&dir)?, dir, name));
         }
     }
-    let mut total: u64 = units.iter().map(|u| u.1).sum();
+    let mut freed = super::discard::collect_stale(home, &root)?;
+    let mut total = usage(home)?;
     if total <= cap {
-        return Ok((0, 0));
+        return Ok((0, freed));
     }
+    let target = cap.saturating_sub(cap / 100 * HEADROOM_SHARE);
     units.sort_by_key(|u| u.0);
     let mut gone = 0;
-    let mut freed = 0;
     for (_, bytes, dir, name) in units {
-        if total <= cap {
+        if total <= target {
             break;
         }
         let Some(_hold) = try_hold(home, &name)? else {
@@ -58,7 +61,7 @@ pub fn gc_cap(home: &Path, cap: u64) -> Result<(u32, u64)> {
         if !dir.is_dir() {
             continue;
         }
-        fs::remove_dir_all(&dir)?;
+        super::discard::discard(&dir)?;
         total = total.saturating_sub(bytes);
         freed += bytes;
         gone += 1;
@@ -77,6 +80,7 @@ pub(super) fn aged(meta: &fs::Metadata, max_age: Duration) -> bool {
 pub fn gc_units(home: &Path, max_age: Duration) -> Result<(u32, u64)> {
     let root = home.join("units").join(LAYOUT);
     let (mut gone, mut bytes) = super::layouts::purge_stale(home, max_age)?;
+    bytes += super::discard::collect_stale(home, &root)?;
     if root.is_dir() {
         for entry in fs::read_dir(&root)? {
             let entry = entry?;
@@ -106,7 +110,7 @@ pub fn gc_units(home: &Path, max_age: Duration) -> Result<(u32, u64)> {
                 continue;
             }
             bytes += size(&dir)?;
-            fs::remove_dir_all(&dir)?;
+            super::discard::discard(&dir)?;
             gone += 1;
         }
     }
@@ -150,15 +154,28 @@ pub fn gc_units(home: &Path, max_age: Duration) -> Result<(u32, u64)> {
     Ok((gone, bytes))
 }
 
+pub fn usage(home: &Path) -> Result<u64> {
+    let root = home.join("units").join(LAYOUT);
+    if !root.is_dir() {
+        return Ok(0);
+    }
+    size(&root)
+}
+
 pub(crate) fn size(dir: &Path) -> Result<u64> {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(error.into()),
+    };
     let mut bytes = 0;
-    for entry in fs::read_dir(dir)? {
+    for entry in entries {
         let entry = entry?;
         let ft = entry.file_type()?;
         if ft.is_dir() {
             bytes += size(&entry.path())?;
         } else if ft.is_file() {
-            bytes += entry.metadata()?.len();
+            bytes += entry.metadata().map_or(0, |meta| meta.len());
         }
     }
     Ok(bytes)

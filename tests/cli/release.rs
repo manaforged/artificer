@@ -37,9 +37,7 @@ fn cargo_install_keeps_cargos_package_installation_behavior() {
     )
     .expect("write fixture file");
     let destination = temp.path().join("installed");
-    let proxy = artificer::cargo_home()
-        .join("bin")
-        .join(format!("cargo{}", std::env::consts::EXE_SUFFIX));
+    let proxy = cargo_proxy();
     let rustup = std::env::var_os("RUSTUP_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -107,9 +105,7 @@ fn cargo_uninstall_removes_the_named_package() {
         "{}",
         String::from_utf8_lossy(&installed.stderr)
     );
-    let proxy = artificer::cargo_home()
-        .join("bin")
-        .join(format!("cargo{}", std::env::consts::EXE_SUFFIX));
+    let proxy = cargo_proxy();
     let rustup = std::env::var_os("RUSTUP_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| {

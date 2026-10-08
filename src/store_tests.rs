@@ -256,3 +256,69 @@ fn gc_removes_unused_units_of_older_layouts() -> Result<()> {
     assert!(current.join("ok").is_file());
     Ok(())
 }
+
+fn aged_unit(home: &Path, name: &str, hours: u64) -> Result<PathBuf> {
+    let dir = unit(home, name)?;
+    fs::write(dir.join("out/libx.rlib"), [0_u8; 1000])?;
+    let past = SystemTime::now() - Duration::from_secs(hours * 3600);
+    fs::File::options()
+        .write(true)
+        .open(dir.join("ok"))?
+        .set_modified(past)?;
+    Ok(dir)
+}
+
+#[test]
+fn gc_cap_evicts_below_the_cap_to_leave_headroom() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let units = (0..20)
+        .map(|at| aged_unit(tmp.path(), &format!("u-{at:02}"), 100 - at))
+        .collect::<Result<Vec<_>>>()?;
+    let total = usage(tmp.path())?;
+    let cap = total - 1;
+    gc_cap(tmp.path(), cap)?;
+    let left = usage(tmp.path())?;
+    assert!(
+        left <= cap - cap / 100 * gc::HEADROOM_SHARE,
+        "{left} bytes left under a cap of {cap}"
+    );
+    assert!(
+        units
+            .last()
+            .is_some_and(|newest| newest.join("ok").is_file())
+    );
+    Ok(())
+}
+
+#[test]
+fn gc_collects_a_rename_left_by_a_dead_process() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let root = tmp.path().join("units").join(LAYOUT);
+    let dead = root.join(".u-gone.artificer-4000000000-0");
+    let live = root.join(format!(".u-busy.artificer-{}-0", std::process::id()));
+    for dir in [&dead, &live] {
+        fs::create_dir_all(dir.join("out"))?;
+        fs::write(dir.join("out/libx.rlib"), b"x")?;
+    }
+    gc_cap(tmp.path(), u64::MAX)?;
+    assert!(
+        !dead.exists(),
+        "a dead process's leftover stays in the store"
+    );
+    assert!(
+        live.exists(),
+        "an in-flight rename by a live process was removed"
+    );
+    Ok(())
+}
+
+#[test]
+fn discarding_a_unit_leaves_nothing_behind() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let dir = unit(tmp.path(), "u-gone")?;
+    discard(&dir)?;
+    assert!(!dir.exists());
+    let leftovers = fs::read_dir(tmp.path().join("units").join(LAYOUT))?.count();
+    assert_eq!(leftovers, 0);
+    Ok(())
+}
