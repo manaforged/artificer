@@ -88,9 +88,7 @@ fn install_disable_enable_and_uninstall_preserve_cargo_and_the_cache() -> Result
     let cargo_home = home.join(".cargo");
     let store = temp.path().join("store");
     let suffix = std::env::consts::EXE_SUFFIX;
-    let proxy = artificer::cargo_home()
-        .join("bin")
-        .join(format!("cargo{suffix}"));
+    let proxy = cargo_proxy();
     let rustup = std::env::var_os("RUSTUP_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -104,7 +102,9 @@ fn install_disable_enable_and_uninstall_preserve_cargo_and_the_cache() -> Result
     if fs::hard_link(proxy.canonicalize()?, &cargo).is_err() {
         fs::copy(&proxy, &cargo)?;
     }
-    let rustc_proxy = proxy.with_file_name(format!("rustc{suffix}"));
+    let rustc_proxy = artificer::cargo_home()
+        .join("bin")
+        .join(format!("rustc{suffix}"));
     let rustc = cargo.with_file_name(format!("rustc{suffix}"));
     if fs::hard_link(rustc_proxy.canonicalize()?, &rustc).is_err() {
         fs::copy(&rustc_proxy, &rustc)?;

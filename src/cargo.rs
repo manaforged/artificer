@@ -225,10 +225,10 @@ pub fn cargo_version(home: &Path) -> Result<String> {
     let key = format!(
         "{}|{}",
         crate::key::toolchain_key(&dir),
-        cargo_bin().display()
+        cargo_bin()?.display()
     );
     crate::key::probe_memo(home, "cargo", &key, || {
-        let mut cmd = Command::new(cargo_bin());
+        let mut cmd = real_cargo_command()?;
         cmd.arg("--version").current_dir(&dir);
         crate::jobs::isolate(&mut cmd);
         let out = cmd.output().context("spawn cargo --version")?;
@@ -241,28 +241,11 @@ pub fn pinned_toolchain_cargo(p: &Path) -> bool {
     p.components().any(|c| c.as_os_str() == "toolchains")
 }
 
-pub(crate) fn cargo_bin() -> PathBuf {
-    if let Ok(p) = std::env::var("ARTIFICER_REAL_CARGO") {
-        let p = PathBuf::from(p);
-        if p.is_file() && !pinned_toolchain_cargo(&p) {
-            return p;
-        }
-    }
-    let stamp = dirs_home().join(".artificer").join("real-cargo");
-    if let Ok(p) = std::fs::read_to_string(&stamp) {
-        let p = PathBuf::from(p.trim());
-        if p.is_file() && !pinned_toolchain_cargo(&p) {
-            return p;
-        }
-    }
-    rustup_cargo()
-}
-
 pub fn toolchain_path() -> Option<std::ffi::OsString> {
     if crate::platform::on_path("rustc").is_some() {
         return None;
     }
-    let dir = cargo_bin().parent()?.to_path_buf();
+    let dir = cargo_bin().ok()?.parent()?.to_path_buf();
     if !dir
         .join(format!("rustc{}", std::env::consts::EXE_SUFFIX))
         .is_file()
@@ -300,7 +283,9 @@ pub fn set_package_env(cmd: &mut Command, pkg: &Package) {
     cmd.env("CARGO_PKG_VERSION_MINOR", minor);
     cmd.env("CARGO_PKG_VERSION_PATCH", patch);
     cmd.env("CARGO_PKG_VERSION_PRE", pre);
-    cmd.env("CARGO", cargo_bin());
+    if let Ok(cargo) = cargo_bin() {
+        cmd.env("CARGO", cargo);
+    }
     cmd.env("CARGO_PKG_AUTHORS", pkg.authors.join(":"));
     cmd.env(
         "CARGO_PKG_DESCRIPTION",
@@ -358,10 +343,13 @@ pub(crate) fn nearest_lock(manifest: &Path) -> Option<PathBuf> {
 #[path = "cargo_tests.rs"]
 mod tests;
 
-#[must_use]
-pub fn stock_cargo() -> PathBuf {
+pub fn stock_cargo() -> Result<PathBuf> {
     cargo_bin()
 }
+
+mod real;
+pub(crate) use real::cargo_bin;
+pub use real::{SHIM_DEPTH, real_cargo_command, shim_depth};
 
 mod cache;
 use cache::{disk_meta, local_only, meta_ram_get, meta_ram_put};

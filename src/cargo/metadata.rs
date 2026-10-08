@@ -53,9 +53,9 @@ fn run_metadata(
     extra: &[&str],
     home: &Path,
 ) -> Result<(Metadata, Vec<u8>)> {
-    let mut cmd = Command::new(cargo_bin());
+    let mut cmd = real_cargo_command()?;
     cmd.current_dir(dir);
-    cmd.env("CARGO", cargo_bin());
+    cmd.env("CARGO", cargo_bin()?);
     crate::jobs::isolate(&mut cmd);
     cmd.env("CARGO_TARGET_DIR", home.join("cargo-meta"));
     cmd.args(["metadata", "--format-version", "1", "--manifest-path"])

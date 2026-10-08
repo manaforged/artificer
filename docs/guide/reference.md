@@ -141,6 +141,7 @@ editing it. An unknown name, malformed line, or invalid Boolean is an error.
 | ARTIFICER_DISABLED | Set to any value, including `0` or empty, to bypass caching for shim commands, before metadata or compiler probes |
 | ARTIFICER_HOME | Store and control directory; default is the OS cache directory |
 | ARTIFICER_REAL_CARGO | System Cargo executable or Rustup proxy used for metadata and shim fallback |
+| ARTIFICER_SHIM_DEPTH | Set by the shim on real Cargo; a shim that starts with 1 or more runs real Cargo directly |
 | ARTIFICER_NOSERVE | Force the in-process build path |
 | ARTIFICER_NO_TREE | Skip the per-invocation feature probe; every handled command falls back to Cargo |
 | ARTIFICER_STORE_CAP_GB | Store size limit in GiB. Unset, the cap is 15% of the volume (at least 8 GiB). A value above that share is clamped to it. |

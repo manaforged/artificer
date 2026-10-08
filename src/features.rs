@@ -1,7 +1,6 @@
 use crate::cargo::{Metadata, cargo_bin, package};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
 pub fn feature_args(all: bool, features: &[String], no_default: bool) -> Vec<String> {
@@ -143,9 +142,9 @@ fn tree_text(
                 fresh = false;
                 hit
             } else {
-                let mut cmd = Command::new(cargo_bin());
+                let mut cmd = crate::cargo::real_cargo_command().ok()?;
                 cmd.current_dir(manifest.parent().unwrap_or(Path::new(".")));
-                cmd.env("CARGO", cargo_bin());
+                cmd.env("CARGO", cargo_bin().ok()?);
                 crate::jobs::isolate(&mut cmd);
                 cmd.env("CARGO_TARGET_DIR", home.join("cargo-meta"));
                 cmd.args([

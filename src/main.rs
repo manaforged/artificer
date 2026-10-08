@@ -20,6 +20,9 @@ impl From<ExitCode> for Dispatch {
 fn main() -> ExitCode {
     #[cfg(unix)]
     drop(artificer::raise_open_file_limit());
+    if shim() && artificer::shim_depth() >= 1 {
+        return reentered().unwrap_or_else(failed);
+    }
     if let Some(path) = artificer::toolchain_path() {
         // SAFETY: main has not started another thread yet.
         unsafe { env::set_var("PATH", path) };
@@ -130,7 +133,7 @@ fn stock(args: &[OsString]) -> Result<ExitCode> {
     let mut command = match (accelerate, external) {
         (true, Some("clippy")) => Command::new("cargo-clippy"),
         (true, Some("nextest")) => Command::new("cargo-nextest"),
-        _ => Command::new(artificer::stock_cargo()),
+        _ => artificer::real_cargo_command()?,
     };
     command.args(args);
     if accelerate {
@@ -139,6 +142,21 @@ fn stock(args: &[OsString]) -> Result<ExitCode> {
     }
     let status = command.status()?;
     Ok(child_exit(status.code().unwrap_or(1)))
+}
+
+fn reentered() -> Result<ExitCode> {
+    let mut command = artificer::real_cargo_command()?;
+    command.args(env::args_os().skip(1));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        Err(command.exec().into())
+    }
+    #[cfg(not(unix))]
+    {
+        let status = command.status()?;
+        Ok(child_exit(status.code().unwrap_or(1)))
+    }
 }
 
 fn fallback(message: impl std::fmt::Display) -> Dispatch {

@@ -163,7 +163,10 @@ fn gc(home: &Path, full: bool) -> Result<()> {
 
 pub(crate) fn store_cap(home: &Path) -> Result<u64> {
     let configured = match std::env::var_os("ARTIFICER_STORE_CAP_GB") {
-        None => None,
+        None => crate::mods::load(home)?
+            .store_cap_gb
+            .map(|gb| gb.checked_mul(1 << 30).context("store-cap-gb is too large"))
+            .transpose()?,
         Some(raw) => {
             let raw = raw
                 .to_str()
