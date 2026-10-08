@@ -100,12 +100,18 @@ pub(crate) fn rustc_base(
     cmd.env("CARGO_CRATE_NAME", crate_name);
     cargo::set_package_env(&mut cmd, pkg);
     if let Some(s) = script {
-        apply_script(&mut cmd, s);
+        apply_script(&mut cmd, s, ScriptTool::Rustc);
     }
     cmd
 }
 
-pub(crate) fn apply_script(cmd: &mut Command, s: &Script) {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ScriptTool {
+    Rustc,
+    Rustdoc,
+}
+
+pub(crate) fn apply_script(cmd: &mut Command, s: &Script, tool: ScriptTool) {
     cmd.env("OUT_DIR", env_path(&s.out_dir));
     for cfg in script::rustc_cfgs(&s.output) {
         cmd.arg("--cfg").arg(cfg);
@@ -113,8 +119,10 @@ pub(crate) fn apply_script(cmd: &mut Command, s: &Script) {
     for (k, v) in script::rustc_envs(&s.output) {
         cmd.env(k, v);
     }
-    for lib in script::link_libs(&s.output) {
-        cmd.arg("-l").arg(lib);
+    if tool == ScriptTool::Rustc {
+        for lib in script::link_libs(&s.output) {
+            cmd.arg("-l").arg(lib);
+        }
     }
     for search in script::link_search(&s.output) {
         cmd.arg("-L").arg(search);
@@ -127,7 +135,9 @@ pub(crate) fn apply_script(cmd: &mut Command, s: &Script) {
     }
     let mut flags = script::rustc_flags(&s.output).into_iter();
     while let (Some(flag), Some(value)) = (flags.next(), flags.next()) {
-        cmd.arg(flag).arg(value);
+        if tool == ScriptTool::Rustc || flag != "-l" {
+            cmd.arg(flag).arg(value);
+        }
     }
 }
 

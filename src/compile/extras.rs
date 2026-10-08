@@ -267,7 +267,7 @@ pub fn doctest_cmd(
     cmd.env("CARGO_CRATE_NAME", &crate_name);
     cargo::set_package_env(&mut cmd, pkg);
     if let Some(s) = ensure_script(sess, pkg, node)? {
-        invoke::apply_script(&mut cmd, &s);
+        invoke::apply_script(&mut cmd, &s, invoke::ScriptTool::Rustdoc);
     }
     invoke::add_externs(&mut cmd, sess, node, invoke::ExternSet::Test, false)?;
     invoke::add_natives(&mut cmd, sess, &pkg.id, true);
