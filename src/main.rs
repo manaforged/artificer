@@ -20,6 +20,11 @@ impl From<ExitCode> for Dispatch {
 fn main() -> ExitCode {
     #[cfg(unix)]
     drop(artificer::raise_open_file_limit());
+    if shim()
+        && let Some(code) = guard::enter()
+    {
+        return code;
+    }
     if shim() && artificer::shim_depth() >= 1 {
         return reentered().unwrap_or_else(failed);
     }
@@ -331,6 +336,8 @@ mod commands;
 mod dispatch;
 use clean::clean;
 use dispatch::{check, dev, request, run_target, test};
+#[path = "main/guard.rs"]
+mod guard;
 #[path = "main/help.rs"]
 mod help;
 #[path = "main/profile.rs"]

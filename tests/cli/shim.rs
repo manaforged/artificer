@@ -113,3 +113,50 @@ fn a_reentered_shim_execs_real_cargo_without_the_store() {
     );
     assert!(!store.exists());
 }
+
+#[cfg(unix)]
+#[test]
+fn a_shim_that_resolves_to_itself_stops_instead_of_forking_forever() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).expect("temporary directory");
+    let sentinel = tmp.path().join("sentinel");
+    let real = tmp.path().join("real-cargo");
+    fs::write(
+        &real,
+        format!(
+            "#!/bin/sh\necho pass >> {}\n\"{}\" \"$@\"\n",
+            sentinel.display(),
+            shim_binary().display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&real, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut child = Command::new(shim_binary())
+        .args(["metadata", "--format-version", "1"])
+        .env("ARTIFICER_SHIM_DEPTH", "1")
+        .env("ARTIFICER_REAL_CARGO", &real)
+        .env("ARTIFICER_HOME", tmp.path().join("store"))
+        .env("HOME", tmp.path())
+        .env_remove("ARTIFICER_NEST")
+        .current_dir(tmp.path())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("run shim");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("poll shim") {
+            break status;
+        }
+        if std::time::Instant::now() > deadline {
+            drop(child.kill());
+            panic!("the shim kept re-entering itself");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    assert!(!status.success());
+    let mut stderr = String::new();
+    std::io::Read::read_to_string(&mut child.stderr.take().unwrap(), &mut stderr).unwrap();
+    assert!(stderr.contains("refusing to start another"), "{stderr}");
+    let passes = fs::read_to_string(&sentinel).unwrap().lines().count();
+    assert!(passes <= 16, "{passes} nested passes");
+}
