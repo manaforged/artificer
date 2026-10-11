@@ -11,7 +11,7 @@ homepage = "https://github.com/manaforged/artificer"
 documentation = "https://github.com/manaforged/artificer/tree/main/docs/guide"
 readme = "README.md"
 exclude = ["/.github", "/bench", "/scripts/bench*.py"]
-keywords = ["build-cache", "cargo", "rust", "rustc"]
+keywords = ["build-cache", "compile-cache", "cargo", "rustc", "worktree"]
 categories = ["development-tools::build-utils"]
 
 [lib]
