@@ -12,7 +12,7 @@ pub fn run_cmd(
     if let Some(name) = example {
         return run_example(dir, packages, name, home, &opts, args);
     }
-    let (root, compiled, settings) =
+    let (root, compiled, settings, _) =
         check_graph(dir, packages, home, false, &opts, &TargetSel::default())?;
     let c = compiled.get(&root).with_context(|| "no package to run")?;
     let name = match bin {

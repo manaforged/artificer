@@ -122,7 +122,7 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
             };
             let art = serde_json::json!({
                 "reason": "compiler-artifact",
-                "package_id": pkg.id,
+                "package_id": pkg.metadata_id(),
                 "manifest_path": pkg.manifest_path,
                 "target": {
                     "kind": bin.target.kind,

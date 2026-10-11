@@ -9,6 +9,7 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 
 ## Unreleased
 
+- JSON build reports retain separate host and target features and use Cargo package IDs. Builds with different build-dependency features no longer fail with "package host+... missing from metadata" after compilation.
 - Windows compilations and doctests with large feature lists or dependency paths use compiler response files. They no longer fail at process launch with "The filename or extension is too long. (os error 206)".
 - Doctests receive native library search paths from their dependency build scripts, so libraries such as Windows import libraries can be found when linking doctest executables.
 - A package with both a library and a binary no longer fails with "extern location for <dependency> does not exist" when a dependency is still compiling. The package's library started as soon as its dependencies' metadata was ready, and the binary built in the same step then linked against libraries that were not yet written. Such a package now waits for its dependencies to finish.

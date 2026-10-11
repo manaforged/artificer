@@ -19,7 +19,7 @@ pub fn check(pkg: &Path, home: &Path) -> Result<Report> {
 }
 
 pub fn check_package(dir: &Path, packages: &[String], home: &Path) -> Result<Report> {
-    let (root, compiled, _) = check_graph(
+    let (root, compiled, _, _) = check_graph(
         dir,
         packages,
         home,
@@ -72,7 +72,7 @@ pub fn check_selected(
     if opts.json && sel.targets().is_none() {
         return Err(select::unmodeled("JSON output for this target selection"));
     }
-    let (_, compiled, _) = match check_graph(dir, packages, home, !opts.link, &opts, sel) {
+    let (_, compiled, _, meta) = match check_graph(dir, packages, home, !opts.link, &opts, sel) {
         Ok(v) => v,
         Err(e) => {
             if opts.json {
@@ -82,50 +82,7 @@ pub fn check_selected(
         }
     };
     if opts.json {
-        let manifest = cargo::find_manifest(dir)?;
-        let mut extra = features::feature_args(opts.all_features, &opts.features, opts.no_default);
-        extra.extend(opts.meta_flags.iter().cloned());
-        let extra: Vec<&str> = extra.iter().map(String::as_str).collect();
-        let meta = cargo::metadata_extra(&manifest, &extra, home)?;
-        let profile = json_profile(
-            cargo::root(&meta, manifest.parent().unwrap_or(dir)),
-            if opts.release { "release" } else { "dev" },
-            false,
-        );
-        for (id, c) in &compiled {
-            let pkg = cargo::package(&meta, id)?;
-            let Some(lib) = pkg.lib_target().or_else(|| pkg.bin_target()) else {
-                continue;
-            };
-            let crate_types = if lib.crate_types.is_empty() {
-                vec!["lib".to_string()]
-            } else {
-                lib.crate_types.clone()
-            };
-            crate::out::out(serde_json::json!({
-                "reason": "compiler-artifact",
-                "package_id": pkg.id,
-                "manifest_path": pkg.manifest_path,
-                "target": {
-                    "kind": lib.kind,
-                    "crate_types": crate_types,
-                    "name": lib.name,
-                    "src_path": lib.src_path,
-                    "edition": lib.edition,
-                    "required-features": lib.required_features,
-                    "doc": lib.doc,
-                    "doctest": lib.doctest,
-                    "test": lib.test
-                },
-                "profile": profile.clone(),
-                "features": cargo::node(&meta, id)?.features,
-                "filenames": [c.artifact.path],
-                "executable": null,
-                "linked": c.artifact.path.extension().is_some_and(|e| e != "rmeta"),
-                "fresh": c.rustc == RustcOutcome::Restored
-            }));
-        }
-        crate::out::out(serde_json::json!({"reason":"build-finished","success":true}));
+        json_artifacts(&meta, &compiled, dir, opts.release)?;
         return Ok(0);
     }
     let hit = compiled
@@ -138,6 +95,50 @@ pub fn check_selected(
         .count();
     crate::out::err(format!("artificer: {hit} hit, {miss} rustc"));
     Ok(0)
+}
+
+fn json_artifacts(
+    meta: &cargo::Metadata,
+    compiled: &HashMap<String, compile::Compiled>,
+    dir: &Path,
+    release: bool,
+) -> Result<()> {
+    let profile = json_profile(cargo::root(meta, dir), profile_name(release, "dev"), false);
+    for (id, c) in compiled {
+        let pkg = cargo::package(meta, id)?;
+        let Some(lib) = pkg.lib_target().or_else(|| pkg.bin_target()) else {
+            continue;
+        };
+        let crate_types = if lib.crate_types.is_empty() {
+            vec!["lib".to_string()]
+        } else {
+            lib.crate_types.clone()
+        };
+        crate::out::out(serde_json::json!({
+            "reason": "compiler-artifact",
+            "package_id": pkg.metadata_id(),
+            "manifest_path": pkg.manifest_path,
+            "target": {
+                "kind": lib.kind,
+                "crate_types": crate_types,
+                "name": lib.name,
+                "src_path": lib.src_path,
+                "edition": lib.edition,
+                "required-features": lib.required_features,
+                "doc": lib.doc,
+                "doctest": lib.doctest,
+                "test": lib.test
+            },
+            "profile": profile.clone(),
+            "features": cargo::node(meta, id)?.features,
+            "filenames": [c.artifact.path],
+            "executable": null,
+            "linked": c.artifact.path.extension().is_some_and(|e| e != "rmeta"),
+            "fresh": c.rustc == RustcOutcome::Restored
+        }));
+    }
+    crate::out::out(serde_json::json!({"reason":"build-finished","success":true}));
+    Ok(())
 }
 
 pub(crate) fn check_roots(
@@ -169,7 +170,12 @@ pub(crate) fn check_roots(
     }
 }
 
-type Graph = (String, HashMap<String, compile::Compiled>, Settings);
+type Graph = (
+    String,
+    HashMap<String, compile::Compiled>,
+    Settings,
+    cargo::Metadata,
+);
 
 pub(super) struct Plan {
     meta: cargo::Metadata,
@@ -264,7 +270,7 @@ fn check_graph(
     let ws = cargo::root(&plan.meta, &plan.pkg_dir);
     finished(ws, profile_name(opts.release, "dev"), started);
     record_stats(home, &compiled, started, op);
-    Ok((root, compiled, sess.settings))
+    Ok((root, compiled, sess.settings, plan.meta))
 }
 
 fn profile_name(release: bool, base: &'static str) -> &'static str {
