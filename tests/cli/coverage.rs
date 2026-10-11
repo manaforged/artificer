@@ -253,3 +253,101 @@ fn rustc_runs_from_the_toolchain_sysroot_not_through_a_proxy() {
     let program = format!("{:?}", exe.display().to_string());
     assert!(command.contains(&program), "{program} not in {command}");
 }
+
+#[test]
+fn compiler_paths_are_portable() -> anyhow::Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let root = tmp.path().join("pkg");
+    write_pkg(&root);
+    fs::write(
+        root.join("Cargo.toml"),
+        format!(
+            "{}\n[profile.release]\nstrip = \"symbols\"\n",
+            fs::read_to_string(root.join("Cargo.toml"))?
+        ),
+    )?;
+    fs::write(
+        root.join("src/main.rs"),
+        "fn main() { let mut s = std::env::args().nth(1).unwrap_or_default(); \
+         s.retain(|c| !c.is_whitespace()); println!(\"{}:{}\", file!(), s); }\n",
+    )?;
+    let probe = Command::new("rustc")
+        .args(["--print", "sysroot"])
+        .current_dir(&root)
+        .output()?;
+    assert!(probe.status.success());
+    let sysroot = String::from_utf8(probe.stdout)?.trim().to_owned();
+    let expected = format!("{:?}", format!("{sysroot}=/rustc"));
+    let home = tmp.path().join("home");
+    let built = artificer(&home, &root)
+        .env("ARTIFICER_TRACE", "1")
+        .args(["build", "--release"])
+        .output()?;
+    let stderr = String::from_utf8_lossy(&built.stderr);
+    assert!(built.status.success(), "{stderr}");
+    assert!(
+        stderr.contains(&expected),
+        "sysroot remap missing: {stderr}"
+    );
+    let binary = root.join(format!(
+        "target/release/filters{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    let bytes = fs::read(&binary)?;
+    assert!(
+        !bytes
+            .windows(sysroot.len())
+            .any(|part| part == sysroot.as_bytes()),
+        "compiled binary retains its compiler sysroot"
+    );
+    let run = Command::new(&binary).arg("a b").output()?;
+    assert!(run.status.success());
+    assert_eq!(String::from_utf8(run.stdout)?.trim(), "./src/main.rs:ab");
+    let cached = artificer(&home, &root)
+        .env("ARTIFICER_TRACE", "1")
+        .args(["build", "--release"])
+        .output()?;
+    let stderr = String::from_utf8_lossy(&cached.stderr);
+    assert!(cached.status.success(), "{stderr}");
+    assert!(!stderr.contains("\"--crate-name\""), "cache miss: {stderr}");
+    assert_eq!(fs::read(binary)?, bytes);
+    assert_eq!(fallbacks(&home, &root), 0);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn invalid_compiler_sysroot_is_rejected() -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempfile::tempdir()?;
+    let root = tmp.path().join("pkg");
+    write_pkg(&root);
+    let compiler = Command::new("rustup")
+        .args(["which", "rustc"])
+        .current_dir(&root)
+        .output()?;
+    assert!(compiler.status.success());
+    let compiler = String::from_utf8(compiler.stdout)?;
+    let compiler = compiler.trim().replace('\'', "'\\''");
+    let wrapper = tmp.path().join("rustc");
+    fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = --print ] && [ \"$2\" = sysroot ]; then \
+             printf 'relative\\n'; exit 0; fi\nexec '{compiler}' \"$@\"\n"
+        ),
+    )?;
+    fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755))?;
+    let out = artificer(&tmp.path().join("home"), &root)
+        .env("RUSTC", wrapper)
+        .arg("build")
+        .output()?;
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "invalid sysroot accepted: {stderr}");
+    assert!(
+        stderr.contains("rustc sysroot is not an existing absolute directory"),
+        "{stderr}"
+    );
+    Ok(())
+}

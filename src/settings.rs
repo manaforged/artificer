@@ -15,6 +15,7 @@ pub struct Settings {
     pub toolchain_dir: PathBuf,
     pub rustc: String,
     pub rustc_exe: String,
+    pub(crate) rustc_sysroot: PathBuf,
     pub host: String,
     pub wrapper_all: Option<String>,
     pub wrapper_local: Option<String>,
@@ -155,6 +156,7 @@ impl Settings {
             key::rustc_version_in(home, dir)
         })?;
         let host = key::rustc_host(&rustc)?;
+        let rustc_sysroot = key::rustc_sysroot(home, dir)?;
         let rustc_exe = key::rustc_exe(home, dir);
         if let Some(name) = crate::gate::gated_env(false) {
             anyhow::bail!("artificer cannot model this environment: {name} is set");
@@ -197,6 +199,7 @@ impl Settings {
             toolchain_dir: dir.to_path_buf(),
             rustc,
             rustc_exe,
+            rustc_sysroot,
             host,
             wrapper_all,
             wrapper_local,

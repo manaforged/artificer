@@ -8,6 +8,11 @@ embedding API. Store files are private implementation details. Use
 `artificer export` and `artificer import` to transfer cached units.
 Human-readable diagnostics can change; use `artificer stat --json` for tooling.
 
+Compiler invocations remap package source paths to `.`, store paths to a
+portable store token, and Rust sysroot paths to `/rustc`. Cached units include
+this remapping policy in their identity. Precompiled native libraries retain
+the source paths recorded by their own compiler.
+
 ## Core commands
 
 One executable has two entry modes. Named `cargo`, it is the shim: it

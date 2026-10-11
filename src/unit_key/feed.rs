@@ -45,6 +45,7 @@ pub(super) fn feed_inputs(
         key.feed(b"script-pending");
     }
     key.feed_list(&sess.settings.rustflags);
+    key.feed_list(invoke::path_remaps(sess, pkg).iter().map(|(_, to)| *to));
     key.feed_list(sess.profile_args(pkg, takes_lto));
     key.feed_list(
         sess.settings
