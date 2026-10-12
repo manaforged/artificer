@@ -78,6 +78,27 @@ fn moving_an_item_between_lists_changes_the_key() {
 }
 
 #[test]
+fn a_finished_build_does_not_keep_the_unit_locked() -> anyhow::Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home)?;
+    let built = Action::begin(&home, Kind::Unit, "run")?;
+    built.prepare()?;
+    built.finish()?;
+    let leases = std::sync::Arc::new(std::sync::Mutex::new(vec![built.lease()?]));
+    drop(built);
+    crate::session::release(&leases);
+    let again = Action::begin(&home, Kind::Unit, "run")?;
+    let start = std::time::Instant::now();
+    again.prepare()?;
+    assert!(
+        start.elapsed() < std::time::Duration::from_millis(200),
+        "releasing the reader still blocked the next write"
+    );
+    Ok(())
+}
+
+#[test]
 fn a_stale_unit_in_use_waits_for_its_reader() -> anyhow::Result<()> {
     let tmp = tempfile::tempdir()?;
     let home = tmp.path().join("home");

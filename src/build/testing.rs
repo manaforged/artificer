@@ -109,6 +109,7 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
         "test",
     );
     finished(ws, profile, started);
+    sess.release_leases();
     if opts.json {
         let profile = json_profile(ws, profile, true);
         for (root, bin) in &bins {

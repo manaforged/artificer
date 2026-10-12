@@ -158,15 +158,21 @@ impl Action {
     fn wait_write(&self) -> Result<()> {
         let limit = std::time::Duration::from_secs(crate::mods::load(&self.home)?.lease_wait_secs);
         let start = std::time::Instant::now();
+        let mut told = std::time::Duration::ZERO;
+        let who = self.holder();
         loop {
             match self.lease.try_lock() {
                 Ok(()) => return Ok(()),
                 Err(std::fs::TryLockError::WouldBlock) if start.elapsed() < limit => {
+                    if start.elapsed() >= told {
+                        say_waiting(&who, start.elapsed());
+                        told = start.elapsed() + std::time::Duration::from_secs(5);
+                    }
                     std::thread::sleep(LEASE_POLL);
                 }
                 Err(std::fs::TryLockError::WouldBlock) => {
                     return Err(crate::cargo::Unmodeled(format!(
-                        "unit {} was in use for {}s",
+                        "unit {} was in use for {}s ({who})",
                         self.name,
                         limit.as_secs()
                     ))
@@ -182,7 +188,41 @@ impl Action {
             self.lease.unlock()?;
         }
         self.lease.lock_shared()?;
+        self.note_holder();
         Ok(Arc::clone(&self.lease))
+    }
+
+    fn note_holder(&self) {
+        let args = std::env::args()
+            .skip(1)
+            .take(4)
+            .collect::<Vec<_>>()
+            .join(" ");
+        let path = holder_path(&self.home, &self.name);
+        drop(std::fs::write(
+            path,
+            format!("{} {args}\n", std::process::id()),
+        ));
+    }
+
+    fn holder(&self) -> String {
+        let path = holder_path(&self.home, &self.name);
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return "another artificer".to_string();
+        };
+        let mut parts = text.split_whitespace();
+        let Some(pid) = parts.next().and_then(|pid| pid.parse::<u32>().ok()) else {
+            return "another artificer".to_string();
+        };
+        if !alive(pid) {
+            return "another artificer".to_string();
+        }
+        let cmd = parts.collect::<Vec<_>>().join(" ");
+        if cmd.is_empty() {
+            format!("pid {pid}")
+        } else {
+            format!("pid {pid} (`{cmd}`)")
+        }
     }
 
     pub fn finish(&self) -> Result<()> {
@@ -206,6 +246,36 @@ impl Action {
     pub(crate) fn invalidate(&self) -> Result<()> {
         self.prepare()?;
         store::discard(&self.slot.dir)
+    }
+}
+
+fn holder_path(home: &Path, name: &str) -> PathBuf {
+    home.join("leases")
+        .join(crate::store::LAYOUT)
+        .join(format!("{name}.holder"))
+}
+
+fn say_waiting(who: &str, elapsed: std::time::Duration) {
+    let waited = match elapsed.as_secs() {
+        0 => String::new(),
+        secs => format!(", {secs}s"),
+    };
+    crate::out::status(
+        crate::out::Status::Waiting,
+        format!("cached unit held by {who}{waited}; that process keeps it until it exits"),
+    );
+}
+
+fn alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        // SAFETY: kill with signal 0 only checks that the pid exists.
+        unsafe { libc::kill(pid as i32, 0) == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
     }
 }
 

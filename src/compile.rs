@@ -24,12 +24,18 @@ pub enum RustcOutcome {
 }
 
 pub struct Compiled {
-    _leases: crate::session::Leases,
+    leases: crate::session::Leases,
     pub artifact: Artifact,
     pub rustc: RustcOutcome,
     pub script: ScriptOutcome,
     pub shipped: Vec<(String, PathBuf)>,
     pub default_run: Option<String>,
+}
+
+pub(crate) fn release(compiled: &std::collections::HashMap<String, Compiled>) {
+    if let Some(item) = compiled.values().next() {
+        crate::session::release(&item.leases);
+    }
 }
 
 pub(crate) fn waits_for_link(sess: &Session, pkg: &Package) -> bool {
@@ -98,7 +104,7 @@ pub fn compile_pkg(sess: &Session, meta: &cargo::Metadata, id: &str) -> Result<O
         Vec::new()
     };
     Ok(Some(Compiled {
-        _leases: std::sync::Arc::clone(&sess.leases),
+        leases: std::sync::Arc::clone(&sess.leases),
         artifact: art,
         rustc,
         script: script_outcome(script.as_ref()),
