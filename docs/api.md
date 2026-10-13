@@ -8,6 +8,11 @@ embedding API. Store files are private implementation details. Use
 `artificer export` and `artificer import` to transfer cached units.
 Human-readable diagnostics can change; use `artificer stat --json` for tooling.
 
+Compiler invocations remap package source paths to `.`, store paths to a
+portable store token, and Rust sysroot paths to `/rustc`. Cached units include
+this remapping policy in their identity. Precompiled native libraries retain
+the source paths recorded by their own compiler.
+
 ## Core commands
 
 One executable has two entry modes. Named `cargo`, it is the shim: it
@@ -250,8 +255,9 @@ unit names on each critical path.
 - Compile modes live in `ARTIFICER_HOME/mods.toml`. Change them with
   `artificer mods`, not by editing the file.
 - `lease-wait-secs` in `mods.toml` sets how long a build waits for another
-  build to stop reading a unit it must rebuild. The default is 1800. After
-  that, the build runs real Cargo and records `unit NAME was in use for Ns`.
+  build to stop reading a unit it must rebuild. The default is 5. A reader
+  keeps a unit until its process exits, so after that the build runs real
+  Cargo and records `unit NAME was in use for Ns`.
 - `ARTIFICER_REAL_CARGO` names the real Cargo. Artificer never runs a
   candidate that resolves to its own shim; if no candidate remains, the
   command fails with exit 101.

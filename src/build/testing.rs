@@ -109,6 +109,7 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
         "test",
     );
     finished(ws, profile, started);
+    sess.release_leases();
     if opts.json {
         let profile = json_profile(ws, profile, true);
         for (root, bin) in &bins {
@@ -122,7 +123,7 @@ pub fn test_package(dir: &Path, packages: &[String], home: &Path, opts: &TestOpt
             };
             let art = serde_json::json!({
                 "reason": "compiler-artifact",
-                "package_id": pkg.id,
+                "package_id": pkg.metadata_id(),
                 "manifest_path": pkg.manifest_path,
                 "target": {
                     "kind": bin.target.kind,

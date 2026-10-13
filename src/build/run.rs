@@ -12,7 +12,7 @@ pub fn run_cmd(
     if let Some(name) = example {
         return run_example(dir, packages, name, home, &opts, args);
     }
-    let (root, compiled, settings) =
+    let (root, compiled, settings, _) =
         check_graph(dir, packages, home, false, &opts, &TargetSel::default())?;
     let c = compiled.get(&root).with_context(|| "no package to run")?;
     let name = match bin {
@@ -30,6 +30,7 @@ pub fn run_cmd(
     if !c.shipped.iter().any(|(n, _)| *n == name) {
         bail!("no bin target `{name}`");
     }
+    super::compile::release(&compiled);
     execute(&settings, &settings.profile_dir().join(name), args)
 }
 
@@ -83,6 +84,7 @@ fn run_example(
         &artifact::bin_name(name),
     )?;
     finished(ws, profile, started);
+    sess.release_leases();
     execute(&sess.settings, &exe, args)
 }
 

@@ -60,6 +60,14 @@ pub(crate) fn check_cfg_args(pkg: &Package) -> Vec<String> {
     args
 }
 
+pub(crate) fn path_remaps(sess: &Session, pkg: &Package) -> [(PathBuf, &'static str); 3] {
+    [
+        (pkg.root().to_path_buf(), "."),
+        (env_path(&sess.settings.home), crate::inputs::STORE_TOKEN),
+        (sess.settings.rustc_sysroot.clone(), "/rustc"),
+    ]
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "the rustc command must receive every independent Cargo unit input"
@@ -78,10 +86,7 @@ pub(crate) fn rustc_base(
     let crate_name = target.name.replace('-', "_");
     cmd.args(["--crate-name", &crate_name, "--edition", &target.edition]);
     style(sess, &mut cmd, link, pkg, lto_ok);
-    let mut remaps = [
-        (pkg.root().to_path_buf(), "."),
-        (env_path(&sess.settings.home), crate::inputs::STORE_TOKEN),
-    ];
+    let mut remaps = path_remaps(sess, pkg);
     remaps.sort_by_key(|(from, _)| from.as_os_str().len());
     for (from, to) in remaps {
         cmd.arg("--remap-path-prefix")

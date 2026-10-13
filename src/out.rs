@@ -91,6 +91,7 @@ pub enum Status {
     Running,
     Executable,
     Timing,
+    Waiting,
 }
 
 impl Status {
@@ -102,6 +103,7 @@ impl Status {
             Self::Running => "Running",
             Self::Executable => "Executable",
             Self::Timing => "Timing",
+            Self::Waiting => "Waiting",
         }
     }
 }

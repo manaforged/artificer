@@ -171,6 +171,12 @@ pub fn host_id(id: &str) -> String {
     format!("{HOST_ID_PREFIX}{id}")
 }
 
+impl Package {
+    pub(crate) fn metadata_id(&self) -> &str {
+        self.id.strip_prefix(HOST_ID_PREFIX).unwrap_or(&self.id)
+    }
+}
+
 pub(crate) fn is_host_clone(id: &str) -> bool {
     id.starts_with(HOST_ID_PREFIX)
 }

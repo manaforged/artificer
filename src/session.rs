@@ -7,6 +7,10 @@ use std::sync::{Arc, Mutex};
 
 pub(crate) type Leases = Arc<Mutex<Vec<Arc<std::fs::File>>>>;
 
+pub(crate) fn release(leases: &Leases) {
+    leases.lock().expect("unit leases").clear();
+}
+
 #[derive(Clone)]
 pub struct Artifact {
     pub crate_name: String,
@@ -165,6 +169,10 @@ impl Session {
 
     pub(crate) fn retain(&self, lease: Arc<std::fs::File>) {
         self.leases.lock().expect("unit leases").push(lease);
+    }
+
+    pub(crate) fn release_leases(&self) {
+        release(&self.leases);
     }
 
     pub(crate) fn note_digest(&self, id: &str, digest: &str) {

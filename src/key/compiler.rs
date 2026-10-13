@@ -1,4 +1,5 @@
 use super::*;
+use anyhow::ensure;
 
 pub fn rustc_version(home: &Path) -> Result<String> {
     rustc_version_in(home, &std::env::current_dir().context("cwd")?)
@@ -134,21 +135,35 @@ pub(crate) fn rustc_exe(home: &Path, dir: &Path) -> String {
     }
     let key = format!("{}|{named}", toolchain_key(dir));
     probe_memo(home, "rustc-exe", &key, || {
-        sysroot_rustc(&named, dir).context("rustc --print sysroot")
+        let exe = rustc_sysroot(home, dir)?
+            .join("bin")
+            .join(format!("rustc{}", std::env::consts::EXE_SUFFIX));
+        ensure!(exe.is_file(), "rustc executable is absent from its sysroot");
+        exe.to_str()
+            .map(str::to_owned)
+            .context("Rust compiler path is not UTF-8")
     })
     .unwrap_or(named)
 }
 
-fn sysroot_rustc(named: &str, dir: &Path) -> Option<String> {
-    let mut cmd = Command::new(named);
-    cmd.args(["--print", "sysroot"]).current_dir(dir);
-    crate::jobs::isolate(&mut cmd);
-    let out = cmd.output().ok().filter(|out| out.status.success())?;
-    let sysroot = PathBuf::from(String::from_utf8(out.stdout).ok()?.trim());
-    let exe = sysroot
-        .join("bin")
-        .join(format!("rustc{}", std::env::consts::EXE_SUFFIX));
-    exe.is_file().then(|| exe.to_string_lossy().into_owned())
+pub(crate) fn rustc_sysroot(home: &Path, dir: &Path) -> Result<PathBuf> {
+    let named = rustc_bin();
+    let key = format!("{}|{named}", toolchain_key(dir));
+    let root = probe_memo(home, "rustc-sysroot", &key, || {
+        let mut cmd = Command::new(&named);
+        cmd.args(["--print", "sysroot"]).current_dir(dir);
+        crate::jobs::isolate(&mut cmd);
+        let out = cmd.output().context("rustc --print sysroot")?;
+        ensure!(out.status.success(), "rustc --print sysroot failed");
+        let root = String::from_utf8(out.stdout).context("rustc sysroot is not UTF-8")?;
+        let path = Path::new(root.trim());
+        ensure!(
+            path.is_absolute() && path.is_dir(),
+            "rustc sysroot is not an existing absolute directory"
+        );
+        Ok(root.trim().to_owned())
+    })?;
+    Ok(PathBuf::from(root))
 }
 
 pub fn rustc_version_in(home: &Path, dir: &Path) -> Result<String> {

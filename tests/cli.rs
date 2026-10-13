@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
+#[path = "cli/feature_json.rs"]
+mod feature_json;
+
 #[path = "cli/release.rs"]
 mod release;
 
