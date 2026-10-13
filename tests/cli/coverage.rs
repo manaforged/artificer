@@ -302,7 +302,11 @@ fn compiler_paths_are_portable() -> anyhow::Result<()> {
     );
     let run = Command::new(&binary).arg("a b").output()?;
     assert!(run.status.success());
-    assert_eq!(String::from_utf8(run.stdout)?.trim(), "./src/main.rs:ab");
+    let source = Path::new(".").join("src").join("main.rs");
+    assert_eq!(
+        String::from_utf8(run.stdout)?.trim(),
+        format!("{}:ab", source.display())
+    );
     let cached = artificer(&home, &root)
         .env("ARTIFICER_TRACE", "1")
         .args(["build", "--release"])

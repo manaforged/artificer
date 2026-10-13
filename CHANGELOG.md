@@ -10,6 +10,7 @@ higher minimum Rust version needs a new minor release, such as `0.2.0`.
 ## Unreleased
 
 - A build that must rebuild a unit another running build still reads now waits 5 seconds, not 30 minutes, then runs real Cargo. Two builds that each needed a unit the other held no longer stall each other, and builds waiting behind them no longer hang.
+- On Windows, JSON build reports use the same package IDs as Cargo when the project path holds a short 8.3 name such as `RUNNER~1`. Artificer looked up the manifest from the long form of the directory, so its package IDs named a different path than Cargo printed.
 - JSON build reports retain separate host and target features and use Cargo package IDs. Builds with different build-dependency features no longer fail with "package host+... missing from metadata" after compilation.
 - Windows compilations and doctests with large feature lists or dependency paths use compiler response files. They no longer fail at process launch with "The filename or extension is too long. (os error 206)".
 - Doctests receive native library search paths from their dependency build scripts, so libraries such as Windows import libraries can be found when linking doctest executables.
