@@ -48,7 +48,7 @@ impl Default for Mods {
             trust: true,
             early: false,
             serve: false,
-            lease_wait_secs: 30 * 60,
+            lease_wait_secs: 5,
             store_cap_gb: None,
         }
     }

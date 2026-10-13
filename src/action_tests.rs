@@ -99,6 +99,35 @@ fn a_finished_build_does_not_keep_the_unit_locked() -> anyhow::Result<()> {
 }
 
 #[test]
+fn a_writer_gives_up_on_a_pinned_unit_quickly() -> anyhow::Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home)?;
+    let built = Action::begin(&home, Kind::Script, "pinned")?;
+    built.prepare()?;
+    built.finish()?;
+    let reader = built.lease()?;
+    drop(built);
+    let (done, outcome) = std::sync::mpsc::channel();
+    let writer_home = home.clone();
+    std::thread::spawn(move || {
+        let result = Action::begin(&writer_home, Kind::Script, "pinned")
+            .and_then(|again| again.invalidate())
+            .map_err(|error| error.to_string());
+        drop(done.send(result));
+    });
+    let result = outcome
+        .recv_timeout(std::time::Duration::from_secs(15))
+        .map_err(|error| anyhow::anyhow!("the writer was still waiting on the reader: {error}"))?;
+    let error = result
+        .err()
+        .ok_or_else(|| anyhow::anyhow!("rebuilt a unit a reader holds"))?;
+    assert!(error.contains("in use"), "{error}");
+    drop(reader);
+    Ok(())
+}
+
+#[test]
 fn a_stale_unit_in_use_waits_for_its_reader() -> anyhow::Result<()> {
     let tmp = tempfile::tempdir()?;
     let home = tmp.path().join("home");
