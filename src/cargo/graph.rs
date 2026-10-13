@@ -115,9 +115,13 @@ pub fn find_manifest(start: &Path) -> Result<PathBuf> {
     } else {
         start
     };
-    let mut dir = start
-        .canonicalize()
-        .with_context(|| format!("no such directory: {}", start.display()))?;
+    let mut dir = if start.is_absolute() && start.is_dir() {
+        start.to_path_buf()
+    } else {
+        start
+            .canonicalize()
+            .with_context(|| format!("no such directory: {}", start.display()))?
+    };
     loop {
         let candidate = dir.join("Cargo.toml");
         if candidate.is_file() {
