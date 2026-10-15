@@ -259,3 +259,17 @@ fn a_package_id_matches_through_another_spelling_of_its_path() {
         &format!("path+file://{}#pkg@0.2.0", real.join("pkg").display())
     ));
 }
+
+#[test]
+fn path_with_appends_a_missing_cargo_dir() {
+    let other = PathBuf::from("/usr/local/bin");
+    let cargo = PathBuf::from("/var/lib/ci/.cargo/bin");
+    let path = std::env::join_paths([&other]).ok();
+    let got = path_with(path, cargo.clone()).expect("PATH without the Cargo dir is extended");
+    assert_eq!(
+        std::env::split_paths(&got).collect::<Vec<_>>(),
+        [other.clone(), cargo.clone()]
+    );
+    let present = std::env::join_paths([&cargo, &other]).ok();
+    assert_eq!(path_with(present, cargo), None);
+}

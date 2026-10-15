@@ -242,9 +242,6 @@ pub fn pinned_toolchain_cargo(p: &Path) -> bool {
 }
 
 pub fn toolchain_path() -> Option<std::ffi::OsString> {
-    if crate::platform::on_path("rustc").is_some() {
-        return None;
-    }
     let dir = cargo_bin().ok()?.parent()?.to_path_buf();
     if !dir
         .join(format!("rustc{}", std::env::consts::EXE_SUFFIX))
@@ -252,9 +249,16 @@ pub fn toolchain_path() -> Option<std::ffi::OsString> {
     {
         return None;
     }
-    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+    path_with(std::env::var_os("PATH"), dir)
+}
+
+fn path_with(path: Option<std::ffi::OsString>, dir: PathBuf) -> Option<std::ffi::OsString> {
+    let mut dirs: Vec<PathBuf> = path
         .map(|path| std::env::split_paths(&path).collect())
         .unwrap_or_default();
+    if dirs.contains(&dir) {
+        return None;
+    }
     dirs.push(dir);
     std::env::join_paths(dirs).ok()
 }
