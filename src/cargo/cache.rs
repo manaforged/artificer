@@ -278,7 +278,8 @@ fn collect_manifests(dir: &Path, found: &mut Vec<PathBuf>) {
         }
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if name.starts_with('.') || matches!(name.as_ref(), "target" | "node_modules") {
+        let build_dir = name == "target" && !entry.path().join("Cargo.toml").is_file();
+        if name.starts_with('.') || name == "node_modules" || build_dir {
             continue;
         }
         collect_manifests(&entry.path(), found);
