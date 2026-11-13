@@ -107,6 +107,31 @@ fn meta_key_ignores_checkout_location() -> Result<()> {
 }
 
 #[test]
+fn member_named_target_edit_changes_meta_key() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let root = tmp.path().join("ws");
+    fs::create_dir_all(&root)?;
+    fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"a\", \"target\"]\nresolver = \"2\"\n",
+    )?;
+    member(&root, "a", "")?;
+    member(&root, "target", "[features]\nbench = []\n")?;
+    let host = "aarch64-apple-darwin";
+    let rustc = "rustc 1.97.0\nhost: aarch64-apple-darwin\n";
+    let manifest = root.join("Cargo.toml");
+    let before = meta_key(&manifest, &[], host, rustc)?;
+    member(
+        &root,
+        "target",
+        "[features]\nbench = []\n[[example]]\nname = \"e\"\nrequired-features = [\"bench\"]\n",
+    )?;
+    let after = meta_key(&manifest, &[], host, rustc)?;
+    assert_ne!(before, after, "a member in a `target` directory must key the metadata cache");
+    Ok(())
+}
+
+#[test]
 fn rustup_proxy_is_not_a_channel_pin() {
     let pinned = Path::new("rustup")
         .join("toolchains")
